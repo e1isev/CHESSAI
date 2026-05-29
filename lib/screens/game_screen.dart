@@ -4,7 +4,7 @@ import 'package:chess/chess.dart' as chess_lib;
 
 import '../models/game_state.dart';
 import '../services/stockfish_service.dart';
-import '../services/claude_coaching_service.dart';
+import '../services/gemini_coaching_service.dart';
 import '../services/opening_detector.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/coaching_panel.dart';
@@ -22,10 +22,10 @@ final stockfishServiceProvider = Provider<StockfishService>((ref) {
   return s;
 });
 
-final claudeServiceProvider = Provider<ClaudeCoachingService?>((ref) {
+final geminiServiceProvider = Provider<GeminiCoachingService?>((ref) {
   final key = ref.watch(apiKeyProvider);
   if (key == null || key.isEmpty) return null;
-  return ClaudeCoachingService(apiKey: key);
+  return GeminiCoachingService(apiKey: key);
 });
 
 final apiKeyProvider = StateProvider<String?>((ref) => null);
@@ -40,24 +40,24 @@ final gameNotifierProvider =
     StateNotifierProvider<GameNotifier, GameState>((ref) {
   return GameNotifier(
     stockfish: ref.watch(stockfishServiceProvider),
-    claudeService: ref.watch(claudeServiceProvider),
+    geminiService: ref.watch(geminiServiceProvider),
     openingDetector: ref.watch(openingDetectorProvider),
   );
 });
 
 class GameNotifier extends StateNotifier<GameState> {
   final StockfishService _stockfish;
-  final ClaudeCoachingService? _claude;
+  final GeminiCoachingService? _gemini;
   final OpeningDetector _openingDetector;
   chess_lib.Chess _chess = chess_lib.Chess();
   bool _stockfishReady = false;
 
   GameNotifier({
     required StockfishService stockfish,
-    required ClaudeCoachingService? claudeService,
+    required GeminiCoachingService? geminiService,
     required OpeningDetector openingDetector,
   })  : _stockfish = stockfish,
-        _claude = claudeService,
+        _gemini = geminiService,
         _openingDetector = openingDetector,
         super(GameState.initial);
 
@@ -158,7 +158,7 @@ class GameNotifier extends StateNotifier<GameState> {
       lastMoveTo: to,
       clearAiExplanation: true,
       clearBlunderWarning: true,
-      isLoadingCoaching: _claude != null,
+      isLoadingCoaching: _gemini != null,
     );
 
     if (_chess.in_checkmate) {
@@ -246,11 +246,11 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   Future<void> _fetchCoachingTip(String lastMove) async {
-    if (_claude == null) {
+    if (_gemini == null) {
       state = state.copyWith(isLoadingCoaching: false);
       return;
     }
-    final tip = await _claude!.getMidGameTip(
+    final tip = await _gemini!.getMidGameTip(
       fen: state.fen,
       lastMove: lastMove,
       moveHistory: state.sanMoves,
@@ -262,8 +262,8 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   Future<void> _fetchAiExplanation(String move) async {
-    if (_claude == null) return;
-    final explanation = await _claude!.getAiMoveExplanation(
+    if (_gemini == null) return;
+    final explanation = await _gemini!.getAiMoveExplanation(
       move: move,
       fen: state.fen,
       moveHistory: state.sanMoves,

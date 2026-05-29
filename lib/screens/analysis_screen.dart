@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/game_state.dart';
-import '../services/claude_coaching_service.dart';
+import '../services/gemini_coaching_service.dart';
 import '../services/game_analyzer.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/move_list.dart';
@@ -38,7 +38,7 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   Future<void> _runAnalysis() async {
-    final claude = ref.read(claudeServiceProvider);
+    final claude = ref.read(geminiServiceProvider);
     if (claude != null && widget.pgn.isNotEmpty) {
       final result = await claude.analyzeGame(
         pgn: widget.pgn,
