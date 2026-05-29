@@ -143,10 +143,8 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
-    final history = _chess.history({'verbose': true}) as List;
-    final san = history.isNotEmpty
-        ? ((history.last as Map)['san'] as String? ?? '$from$to')
-        : '$from$to';
+    final history = _chess.history as List;
+    final san = history.isNotEmpty ? history.last.toString() : '$from$to';
     final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
@@ -218,10 +216,8 @@ class GameNotifier extends StateNotifier<GameState> {
       if (promo != null) 'promotion': promo,
     });
 
-    final history = _chess.history({'verbose': true}) as List;
-    final san = history.isNotEmpty
-        ? ((history.last as Map)['san'] as String? ?? uciMove)
-        : uciMove;
+    final history = _chess.history as List;
+    final san = history.isNotEmpty ? history.last.toString() : uciMove;
     final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
