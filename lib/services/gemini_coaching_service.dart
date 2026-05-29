@@ -15,15 +15,38 @@ class GeminiCoachingService {
     required List<String> moveHistory,
   }) async {
     final pgn = moveHistory.join(' ');
+    final moveNumber = moveHistory.length;
+    final earlyGameNote = moveNumber <= 10
+        ? 'This is move $moveNumber — remind the player of opening principles '
+          '(control the center with pawns, develop knights and bishops before the queen, '
+          'castle early for king safety) if relevant. '
+        : '';
     final prompt =
         'You are a friendly chess coach helping a beginner. '
         'The current position in FEN is: $fen. '
-        'The player just moved $lastMove. '
-        'Move history: $pgn. '
-        'In 1-2 sentences, give a helpful coaching tip about the position. '
-        'If they missed something better, mention it gently. '
-        'Be encouraging and specific.';
+        'The player just moved $lastMove (move $moveNumber). '
+        'Full move history: $pgn. '
+        '$earlyGameNote'
+        'Respond in 1-3 sentences total and follow these rules:\n'
+        '1. State in ONE sentence what the player\'s move ($lastMove) accomplishes strategically '
+        '(be specific to this exact position — e.g., "Your move $lastMove attacks the bishop on f5 '
+        'and forces Black to retreat.").\n'
+        '2. If you detect a tactical pattern present in the current position (fork, pin, skewer, '
+        'discovered attack, double attack, back-rank weakness, etc.), name it explicitly '
+        'and point out the squares/pieces involved.\n'
+        '3. If applicable, give one concrete follow-up suggestion. '
+        'Be encouraging, avoid vague phrases like "great move" without explanation. '
+        'Never be generic — always refer to specific pieces and squares.';
     return _callGemini(prompt);
+  }
+
+  /// Explains a chess concept in one beginner-friendly sentence.
+  Future<String?> getConceptExplanation(String concept) async {
+    final prompt =
+        'You are a chess coach. Explain the chess concept "$concept" in exactly '
+        'one simple sentence suitable for a complete beginner. '
+        'Be concrete and use an example if it fits in one sentence.';
+    return _callGemini(prompt, maxTokens: 100);
   }
 
   Future<String?> getAiMoveExplanation({

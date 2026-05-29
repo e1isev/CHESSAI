@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../models/game_state.dart';
+import '../data/piece_svgs.dart';
 
 // Chess.com board colors
 const _lightSquare = Color(0xFFEEEED2);
@@ -8,10 +10,6 @@ const _selectedHighlight = Color(0xAA20C020);
 const _validMoveHighlight = Color(0x8820C020);
 const _lastMoveHighlight = Color(0xAAF6F669);
 
-const _pieceSymbols = {
-  'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
-  'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟',
-};
 
 class ChessBoard extends StatelessWidget {
   final GameState gameState;
@@ -48,8 +46,6 @@ class ChessBoard extends StatelessWidget {
                   final isValidMove = gameState.validMoveSquares.contains(square);
                   final isLastFrom = gameState.lastMoveFrom == square;
                   final isLastTo = gameState.lastMoveTo == square;
-                  final isWhitePiece = piece != null && piece.startsWith('w');
-
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => onSquareTap(square),
@@ -59,7 +55,6 @@ class ChessBoard extends StatelessWidget {
                         isValidMove: isValidMove,
                         isLastMoveSquare: isLastFrom || isLastTo,
                         piece: piece,
-                        isWhitePiece: isWhitePiece,
                         showCoord: _coordLabel(file, rank, flipped, colIdx, rowIdx),
                       ),
                     ),
@@ -113,7 +108,6 @@ class _SquareWidget extends StatelessWidget {
   final bool isValidMove;
   final bool isLastMoveSquare;
   final String? piece;
-  final bool isWhitePiece;
   final String? showCoord;
 
   const _SquareWidget({
@@ -122,7 +116,6 @@ class _SquareWidget extends StatelessWidget {
     required this.isValidMove,
     required this.isLastMoveSquare,
     this.piece,
-    required this.isWhitePiece,
     this.showCoord,
   });
 
@@ -163,16 +156,13 @@ class _SquareWidget extends StatelessWidget {
                     ),
                   ),
 
-          // Chess piece
-          if (piece != null)
-            FittedBox(
-              fit: BoxFit.contain,
-              child: Padding(
-                padding: const EdgeInsets.all(1),
-                child: _ChessPiece(
-                  symbol: _pieceSymbols[piece] ?? '',
-                  isWhite: isWhitePiece,
-                ),
+          // Chess piece (cburnett SVG)
+          if (piece != null && kPieceSvgs.containsKey(piece))
+            Padding(
+              padding: const EdgeInsets.all(2),
+              child: SvgPicture.string(
+                kPieceSvgs[piece]!,
+                fit: BoxFit.contain,
               ),
             ),
         ],
@@ -181,76 +171,3 @@ class _SquareWidget extends StatelessWidget {
   }
 }
 
-class _ChessPiece extends StatelessWidget {
-  final String symbol;
-  final bool isWhite;
-
-  const _ChessPiece({required this.symbol, required this.isWhite});
-
-  @override
-  Widget build(BuildContext context) {
-    if (isWhite) {
-      // White piece: white fill with dark outline (chess.com style)
-      return Stack(
-        children: [
-          // Outline layer (dark, slightly larger offset in multiple directions)
-          for (final offset in [
-            const Offset(-1.5, -1.5),
-            const Offset(1.5, -1.5),
-            const Offset(-1.5, 1.5),
-            const Offset(1.5, 1.5),
-            const Offset(0, -2),
-            const Offset(0, 2),
-            const Offset(-2, 0),
-            const Offset(2, 0),
-          ])
-            Transform.translate(
-              offset: offset,
-              child: Text(
-                symbol,
-                style: const TextStyle(
-                  fontSize: 38,
-                  color: Color(0xFF1A1A1A),
-                  height: 1,
-                ),
-              ),
-            ),
-          // White fill
-          Text(
-            symbol,
-            style: const TextStyle(
-              fontSize: 38,
-              color: Colors.white,
-              height: 1,
-            ),
-          ),
-        ],
-      );
-    } else {
-      // Black piece: dark fill with subtle light shadow
-      return Stack(
-        children: [
-          Transform.translate(
-            offset: const Offset(0.5, 1),
-            child: Text(
-              symbol,
-              style: TextStyle(
-                fontSize: 38,
-                color: Colors.white.withValues(alpha: 0.3),
-                height: 1,
-              ),
-            ),
-          ),
-          Text(
-            symbol,
-            style: const TextStyle(
-              fontSize: 38,
-              color: Color(0xFF1A1A1A),
-              height: 1,
-            ),
-          ),
-        ],
-      );
-    }
-  }
-}

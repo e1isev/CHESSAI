@@ -365,8 +365,17 @@ class GameScreen extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Status bar
-            _StatusBar(gameState: gs),
+            // Bot player bar (top — opponent)
+            _BotPlayerBar(
+              difficulty: gs.difficulty,
+              isThinking: gs.isAiThinking,
+              lastAiMove: gs.isAiThinking
+                  ? null
+                  : (gs.sanMoves.isNotEmpty &&
+                          _lastMoveWasAi(gs)
+                      ? gs.sanMoves.last
+                      : null),
+            ),
 
             // Opening banner
             OpeningBanner(opening: gs.currentOpening),
@@ -390,6 +399,9 @@ class GameScreen extends ConsumerWidget {
               ),
             ),
 
+            // Player bar (bottom — you)
+            _PlayerBar(playerColor: gs.playerColor),
+
             // Coaching panel
             CoachingPanel(gameState: gs),
 
@@ -398,6 +410,20 @@ class GameScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Returns true when the last move in the history was made by the AI.
+  /// AI plays the opposite color of the player.
+  bool _lastMoveWasAi(GameState gs) {
+    if (gs.sanMoves.isEmpty) return false;
+    // After the AI moves, it's the player's turn. The turn in FEN tells us
+    // whose turn it is NOW, so the last mover is the opposite.
+    final turnInFen = gs.fen.split(' ')[1]; // 'w' or 'b'
+    final aiIsWhite = gs.playerColor == PlayerColor.black;
+    // If AI is white and it was white's turn last (now it's black's turn after AI moved)
+    if (aiIsWhite && turnInFen == 'b') return true;
+    if (!aiIsWhite && turnInFen == 'w') return true;
+    return false;
   }
 
   Future<void> _confirmResign(BuildContext context, GameNotifier notifier) async {
@@ -494,6 +520,219 @@ class _DifficultyBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bot Player Bar (top — shows the AI opponent)
+// ---------------------------------------------------------------------------
+
+class _BotPlayerBar extends StatefulWidget {
+  final int difficulty;
+  final bool isThinking;
+  final String? lastAiMove;
+
+  const _BotPlayerBar({
+    required this.difficulty,
+    required this.isThinking,
+    this.lastAiMove,
+  });
+
+  @override
+  State<_BotPlayerBar> createState() => _BotPlayerBarState();
+}
+
+class _BotPlayerBarState extends State<_BotPlayerBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  static const _difficultyLabels = {
+    1: 'Novice',
+    2: 'Beginner',
+    3: 'Casual',
+    4: 'Club',
+    5: 'Master',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      lowerBound: 0.3,
+      upperBound: 1.0,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _difficultyLabels[widget.difficulty] ?? 'Level ${widget.difficulty}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFF0A1628),
+      child: Row(
+        children: [
+          // Knight avatar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2E45),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF2A4060), width: 1),
+            ),
+            child: const Center(
+              child: Text('♞', style: TextStyle(fontSize: 20, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Name + badge
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Stockfish',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF64B5F6).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: const Color(0xFF64B5F6).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: Color(0xFF64B5F6),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                // Thinking indicator or last move
+                if (widget.isThinking)
+                  Row(
+                    children: [
+                      FadeTransition(
+                        opacity: _pulse,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF64B5F6),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        "Bot's turn",
+                        style: TextStyle(color: Color(0xFF64B5F6), fontSize: 11),
+                      ),
+                    ],
+                  )
+                else if (widget.lastAiMove != null)
+                  Text(
+                    '♞ ${widget.lastAiMove}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  )
+                else
+                  const Text(
+                    'Waiting...',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Player Bar (bottom — shows the human player)
+// ---------------------------------------------------------------------------
+
+class _PlayerBar extends StatelessWidget {
+  final PlayerColor playerColor;
+
+  const _PlayerBar({required this.playerColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final isWhite = playerColor == PlayerColor.white;
+    final colorLabel = isWhite ? 'White' : 'Black';
+    final pieceIcon = isWhite ? '♔' : '♚';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFF0A1628),
+      child: Row(
+        children: [
+          // Player avatar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isWhite ? const Color(0xFFEEEED2) : const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF2A4060), width: 1),
+            ),
+            child: Center(
+              child: Text(
+                pieceIcon,
+                style: TextStyle(
+                  fontSize: 20,
+                  color: isWhite ? Colors.black : Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'You',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                colorLabel,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
