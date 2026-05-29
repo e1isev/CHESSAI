@@ -132,19 +132,22 @@ class GameNotifier extends StateNotifier<GameState> {
       }
     }
 
-    final move = _chess.move({
+    final success = _chess.move({
       'from': from,
       'to': to,
       if (promotion != null) 'promotion': promotion,
     });
 
-    if (move == null) {
+    if (success == false || success == null) {
       state = state.copyWith(clearSelectedSquare: true, validMoveSquares: []);
       return;
     }
 
-    final san = move.san ?? '$from$to';
-    final newMoves = [...state.sanMoves, san];
+    final history = _chess.history({'verbose': true}) as List;
+    final san = history.isNotEmpty
+        ? ((history.last as Map)['san'] as String? ?? '$from$to')
+        : '$from$to';
+    final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
     state = state.copyWith(
@@ -209,14 +212,17 @@ class GameNotifier extends StateNotifier<GameState> {
     final to = uciMove.substring(2, 4);
     final promo = uciMove.length == 5 ? uciMove[4] : null;
 
-    final move = _chess.move({
+    _chess.move({
       'from': from,
       'to': to,
       if (promo != null) 'promotion': promo,
     });
 
-    final san = move?.san ?? uciMove;
-    final newMoves = [...state.sanMoves, san];
+    final history = _chess.history({'verbose': true}) as List;
+    final san = history.isNotEmpty
+        ? ((history.last as Map)['san'] as String? ?? uciMove)
+        : uciMove;
+    final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
     state = state.copyWith(
