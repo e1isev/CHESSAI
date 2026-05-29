@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game_state.dart';
 import 'game_screen.dart';
 import 'history_screen.dart';
+import 'progress_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -26,7 +27,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _loadApiKey() async {
     final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString('claude_api_key') ?? '';
+    final key = prefs.getString('gemini_api_key') ?? '';
     if (key.isNotEmpty) {
       ref.read(apiKeyProvider.notifier).state = key;
       setState(() => _apiKeySet = true);
@@ -37,7 +38,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _showApiKeyDialog({bool forceShow = false}) async {
     final prefs = await SharedPreferences.getInstance();
-    final existing = prefs.getString('claude_api_key') ?? '';
+    final existing = prefs.getString('gemini_api_key') ?? '';
     final controller = TextEditingController(text: existing);
 
     await showDialog(
@@ -46,7 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF0D2137),
         title: const Text(
-          'Claude API Key',
+          'Gemini API Key',
           style: TextStyle(color: Color(0xFFF4B942)),
         ),
         content: Column(
@@ -54,7 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter your Anthropic Claude API key to enable AI coaching features. '
+              'Enter your Google Gemini API key (free at aistudio.google.com) to enable AI coaching features. '
               'The app works offline for basic chess without a key.',
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
@@ -64,7 +65,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               obscureText: true,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'sk-ant-...',
+                hintText: 'AIza...',
                 hintStyle: const TextStyle(color: Colors.white38),
                 filled: true,
                 fillColor: const Color(0xFF0A1628),
@@ -88,7 +89,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           TextButton(
             onPressed: () async {
-              await prefs.remove('claude_api_key');
+              await prefs.remove('gemini_api_key');
               ref.read(apiKeyProvider.notifier).state = null;
               if (mounted) setState(() => _apiKeySet = false);
               if (ctx.mounted) Navigator.pop(ctx);
@@ -99,7 +100,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: () async {
               final key = controller.text.trim();
               if (key.isNotEmpty) {
-                await prefs.setString('claude_api_key', key);
+                await prefs.setString('gemini_api_key', key);
                 ref.read(apiKeyProvider.notifier).state = key;
                 if (mounted) setState(() => _apiKeySet = true);
               }
@@ -193,23 +194,43 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               const SizedBox(height: 12),
 
-              // History button
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const HistoryScreen()),
+              // History / Progress row
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HistoryScreen()),
+                      ),
+                      icon: const Icon(Icons.history, size: 18),
+                      label: const Text('History'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Color(0xFF1E3A5F)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
                   ),
-                  icon: const Icon(Icons.history, size: 18),
-                  label: const Text('Game History'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Color(0xFF1E3A5F)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ProgressScreen()),
+                      ),
+                      icon: const Icon(Icons.trending_up, size: 18),
+                      label: const Text('Progress'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFF4B942),
+                        side: const BorderSide(color: Color(0xFFF4B942), width: 1),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
 
               const SizedBox(height: 20),
@@ -298,7 +319,7 @@ class _ApiKeyBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 isSet
-                    ? 'Claude AI coaching enabled'
+                    ? 'Gemini AI coaching enabled (free)'
                     : 'No API key — coaching disabled. Tap to add.',
                 style: TextStyle(
                   color: isSet ? Colors.greenAccent : Colors.orange,

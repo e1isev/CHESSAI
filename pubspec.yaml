@@ -14,14 +14,16 @@ dependencies:
   chess: ^0.8.1
 
   # Stockfish engine
-  stockfish_chess_engine: ^2.3.0
+  stockfish_chess_engine: ^0.8.2
 
   # State management
   flutter_riverpod: ^2.5.1
-  riverpod_annotation: ^2.3.5
 
   # HTTP for Claude API
   http: ^1.2.1
+
+  # SVG rendering for chess pieces
+  flutter_svg: ^2.0.10+1
 
   # Environment variables
   flutter_dotenv: ^5.1.0
@@ -30,11 +32,6 @@ dependencies:
   sqflite: ^2.3.3+1
   path: ^1.9.0
 
-  # UI utilities
-  flutter_svg: ^2.0.10+1
-  google_fonts: ^6.2.1
-  gap: ^3.0.1
-
   # Shared preferences for simple settings
   shared_preferences: ^2.2.3
 
@@ -42,19 +39,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  build_runner: ^2.4.9
-  riverpod_generator: ^2.4.0
 
 flutter:
   uses-material-design: true
 
-  assets:
-    - .env
-    - assets/pieces/
-
-  fonts:
-    - family: Merriweather
-      fonts:
-        - asset: assets/fonts/Merriweather-Regular.ttf
-        - asset: assets/fonts/Merriweather-Bold.ttf
-          weight: 700
+  # assets: []

@@ -4,7 +4,7 @@ import 'package:chess/chess.dart' as chess_lib;
 
 import '../models/game_state.dart';
 import '../services/stockfish_service.dart';
-import '../services/claude_coaching_service.dart';
+import '../services/gemini_coaching_service.dart';
 import '../services/opening_detector.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/coaching_panel.dart';
@@ -22,10 +22,10 @@ final stockfishServiceProvider = Provider<StockfishService>((ref) {
   return s;
 });
 
-final claudeServiceProvider = Provider<ClaudeCoachingService?>((ref) {
+final geminiServiceProvider = Provider<GeminiCoachingService?>((ref) {
   final key = ref.watch(apiKeyProvider);
   if (key == null || key.isEmpty) return null;
-  return ClaudeCoachingService(apiKey: key);
+  return GeminiCoachingService(apiKey: key);
 });
 
 final apiKeyProvider = StateProvider<String?>((ref) => null);
@@ -40,24 +40,24 @@ final gameNotifierProvider =
     StateNotifierProvider<GameNotifier, GameState>((ref) {
   return GameNotifier(
     stockfish: ref.watch(stockfishServiceProvider),
-    claudeService: ref.watch(claudeServiceProvider),
+    geminiService: ref.watch(geminiServiceProvider),
     openingDetector: ref.watch(openingDetectorProvider),
   );
 });
 
 class GameNotifier extends StateNotifier<GameState> {
   final StockfishService _stockfish;
-  final ClaudeCoachingService? _claude;
+  final GeminiCoachingService? _gemini;
   final OpeningDetector _openingDetector;
   chess_lib.Chess _chess = chess_lib.Chess();
   bool _stockfishReady = false;
 
   GameNotifier({
     required StockfishService stockfish,
-    required ClaudeCoachingService? claudeService,
+    required GeminiCoachingService? geminiService,
     required OpeningDetector openingDetector,
   })  : _stockfish = stockfish,
-        _claude = claudeService,
+        _gemini = geminiService,
         _openingDetector = openingDetector,
         super(GameState.initial);
 
@@ -132,19 +132,20 @@ class GameNotifier extends StateNotifier<GameState> {
       }
     }
 
-    final move = _chess.move({
+    final success = _chess.move({
       'from': from,
       'to': to,
       if (promotion != null) 'promotion': promotion,
     });
 
-    if (move == null) {
+    if (success == false || success == null) {
       state = state.copyWith(clearSelectedSquare: true, validMoveSquares: []);
       return;
     }
 
-    final san = move.san ?? '$from$to';
-    final newMoves = [...state.sanMoves, san];
+    final history = _chess.history as List;
+    final san = history.isNotEmpty ? history.last.toString() : '$from$to';
+    final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
     state = state.copyWith(
@@ -157,7 +158,7 @@ class GameNotifier extends StateNotifier<GameState> {
       lastMoveTo: to,
       clearAiExplanation: true,
       clearBlunderWarning: true,
-      isLoadingCoaching: _claude != null,
+      isLoadingCoaching: _gemini != null,
     );
 
     if (_chess.in_checkmate) {
@@ -209,14 +210,15 @@ class GameNotifier extends StateNotifier<GameState> {
     final to = uciMove.substring(2, 4);
     final promo = uciMove.length == 5 ? uciMove[4] : null;
 
-    final move = _chess.move({
+    _chess.move({
       'from': from,
       'to': to,
       if (promo != null) 'promotion': promo,
     });
 
-    final san = move?.san ?? uciMove;
-    final newMoves = [...state.sanMoves, san];
+    final history = _chess.history as List;
+    final san = history.isNotEmpty ? history.last.toString() : uciMove;
+    final newMoves = <String>[...state.sanMoves, san];
     final opening = _openingDetector.update(newMoves);
 
     state = state.copyWith(
@@ -244,11 +246,11 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   Future<void> _fetchCoachingTip(String lastMove) async {
-    if (_claude == null) {
+    if (_gemini == null) {
       state = state.copyWith(isLoadingCoaching: false);
       return;
     }
-    final tip = await _claude!.getMidGameTip(
+    final tip = await _gemini!.getMidGameTip(
       fen: state.fen,
       lastMove: lastMove,
       moveHistory: state.sanMoves,
@@ -260,8 +262,8 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   Future<void> _fetchAiExplanation(String move) async {
-    if (_claude == null) return;
-    final explanation = await _claude!.getAiMoveExplanation(
+    if (_gemini == null) return;
+    final explanation = await _gemini!.getAiMoveExplanation(
       move: move,
       fen: state.fen,
       moveHistory: state.sanMoves,
@@ -363,8 +365,17 @@ class GameScreen extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Status bar
-            _StatusBar(gameState: gs),
+            // Bot player bar (top — opponent)
+            _BotPlayerBar(
+              difficulty: gs.difficulty,
+              isThinking: gs.isAiThinking,
+              lastAiMove: gs.isAiThinking
+                  ? null
+                  : (gs.sanMoves.isNotEmpty &&
+                          _lastMoveWasAi(gs)
+                      ? gs.sanMoves.last
+                      : null),
+            ),
 
             // Opening banner
             OpeningBanner(opening: gs.currentOpening),
@@ -388,6 +399,9 @@ class GameScreen extends ConsumerWidget {
               ),
             ),
 
+            // Player bar (bottom — you)
+            _PlayerBar(playerColor: gs.playerColor),
+
             // Coaching panel
             CoachingPanel(gameState: gs),
 
@@ -396,6 +410,20 @@ class GameScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// Returns true when the last move in the history was made by the AI.
+  /// AI plays the opposite color of the player.
+  bool _lastMoveWasAi(GameState gs) {
+    if (gs.sanMoves.isEmpty) return false;
+    // After the AI moves, it's the player's turn. The turn in FEN tells us
+    // whose turn it is NOW, so the last mover is the opposite.
+    final turnInFen = gs.fen.split(' ')[1]; // 'w' or 'b'
+    final aiIsWhite = gs.playerColor == PlayerColor.black;
+    // If AI is white and it was white's turn last (now it's black's turn after AI moved)
+    if (aiIsWhite && turnInFen == 'b') return true;
+    if (!aiIsWhite && turnInFen == 'w') return true;
+    return false;
   }
 
   Future<void> _confirmResign(BuildContext context, GameNotifier notifier) async {
@@ -492,6 +520,219 @@ class _DifficultyBadge extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bot Player Bar (top — shows the AI opponent)
+// ---------------------------------------------------------------------------
+
+class _BotPlayerBar extends StatefulWidget {
+  final int difficulty;
+  final bool isThinking;
+  final String? lastAiMove;
+
+  const _BotPlayerBar({
+    required this.difficulty,
+    required this.isThinking,
+    this.lastAiMove,
+  });
+
+  @override
+  State<_BotPlayerBar> createState() => _BotPlayerBarState();
+}
+
+class _BotPlayerBarState extends State<_BotPlayerBar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  static const _difficultyLabels = {
+    1: 'Novice',
+    2: 'Beginner',
+    3: 'Casual',
+    4: 'Club',
+    5: 'Master',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      lowerBound: 0.3,
+      upperBound: 1.0,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _difficultyLabels[widget.difficulty] ?? 'Level ${widget.difficulty}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFF0A1628),
+      child: Row(
+        children: [
+          // Knight avatar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A2E45),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF2A4060), width: 1),
+            ),
+            child: const Center(
+              child: Text('♞', style: TextStyle(fontSize: 20, color: Colors.white)),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // Name + badge
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Stockfish',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF64B5F6).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: const Color(0xFF64B5F6).withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: Color(0xFF64B5F6),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                // Thinking indicator or last move
+                if (widget.isThinking)
+                  Row(
+                    children: [
+                      FadeTransition(
+                        opacity: _pulse,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Color(0xFF64B5F6),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        "Bot's turn",
+                        style: TextStyle(color: Color(0xFF64B5F6), fontSize: 11),
+                      ),
+                    ],
+                  )
+                else if (widget.lastAiMove != null)
+                  Text(
+                    '♞ ${widget.lastAiMove}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                  )
+                else
+                  const Text(
+                    'Waiting...',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Player Bar (bottom — shows the human player)
+// ---------------------------------------------------------------------------
+
+class _PlayerBar extends StatelessWidget {
+  final PlayerColor playerColor;
+
+  const _PlayerBar({required this.playerColor});
+
+  @override
+  Widget build(BuildContext context) {
+    final isWhite = playerColor == PlayerColor.white;
+    final colorLabel = isWhite ? 'White' : 'Black';
+    final pieceIcon = isWhite ? '♔' : '♚';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      color: const Color(0xFF0A1628),
+      child: Row(
+        children: [
+          // Player avatar
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: isWhite ? const Color(0xFFEEEED2) : const Color(0xFF2A2A2A),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF2A4060), width: 1),
+            ),
+            child: Center(
+              child: Text(
+                pieceIcon,
+                style: TextStyle(
+                  fontSize: 20,
+                  color: isWhite ? Colors.black : Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'You',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                colorLabel,
+                style: const TextStyle(color: Colors.white54, fontSize: 11),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

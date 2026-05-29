@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../models/game_state.dart';
+import '../data/piece_svgs.dart';
 
-const _lightSquare = Color(0xFFE8CFA9);
-const _darkSquare = Color(0xFF8B5E3C);
-const _selectedHighlight = Color(0x8832CD32);
-const _validMoveHighlight = Color(0x6632CD32);
-const _lastMoveHighlight = Color(0x66F4B942);
+// Chess.com board colors
+const _lightSquare = Color(0xFFEEEED2);
+const _darkSquare = Color(0xFF769656);
+const _selectedHighlight = Color(0xAA20C020);
+const _validMoveHighlight = Color(0x8820C020);
+const _lastMoveHighlight = Color(0xAAF6F669);
 
-const _pieceSymbols = {
-  'wK': '♔', 'wQ': '♕', 'wR': '♖', 'wB': '♗', 'wN': '♘', 'wP': '♙',
-  'bK': '♚', 'bQ': '♛', 'bR': '♜', 'bB': '♝', 'bN': '♞', 'bP': '♟',
-};
 
 class ChessBoard extends StatelessWidget {
   final GameState gameState;
@@ -29,43 +28,47 @@ class ChessBoard extends StatelessWidget {
 
     return AspectRatio(
       aspectRatio: 1,
-      child: Column(
-        children: List.generate(8, (rowIdx) {
-          final rank = flipped ? rowIdx : 7 - rowIdx;
-          return Expanded(
-            child: Row(
-              children: List.generate(8, (colIdx) {
-                final file = flipped ? 7 - colIdx : colIdx;
-                final square = _squareName(file, rank);
-                final piece = pieces[square];
-                final isLight = (file + rank) % 2 == 1;
-                final isSelected = gameState.selectedSquare == square;
-                final isValidMove = gameState.validMoveSquares.contains(square);
-                final isLastFrom = gameState.lastMoveFrom == square;
-                final isLastTo = gameState.lastMoveTo == square;
-
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onSquareTap(square),
-                    child: _SquareWidget(
-                      isLight: isLight,
-                      isSelected: isSelected,
-                      isValidMove: isValidMove,
-                      isLastMoveSquare: isLastFrom || isLastTo,
-                      piece: piece,
-                      label: _squareLabel(file, rank, flipped, colIdx, rowIdx),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF5D4037), width: 3),
+        ),
+        child: Column(
+          children: List.generate(8, (rowIdx) {
+            final rank = flipped ? rowIdx : 7 - rowIdx;
+            return Expanded(
+              child: Row(
+                children: List.generate(8, (colIdx) {
+                  final file = flipped ? 7 - colIdx : colIdx;
+                  final square = _squareName(file, rank);
+                  final piece = pieces[square];
+                  final isLight = (file + rank) % 2 == 1;
+                  final isSelected = gameState.selectedSquare == square;
+                  final isValidMove = gameState.validMoveSquares.contains(square);
+                  final isLastFrom = gameState.lastMoveFrom == square;
+                  final isLastTo = gameState.lastMoveTo == square;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onSquareTap(square),
+                      child: _SquareWidget(
+                        isLight: isLight,
+                        isSelected: isSelected,
+                        isValidMove: isValidMove,
+                        isLastMoveSquare: isLastFrom || isLastTo,
+                        piece: piece,
+                        showCoord: _coordLabel(file, rank, flipped, colIdx, rowIdx),
+                      ),
                     ),
-                  ),
-                );
-              }),
-            ),
-          );
-        }),
+                  );
+                }),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }
 
-  String? _squareLabel(int file, int rank, bool flipped, int col, int row) => null;
+  String? _coordLabel(int file, int rank, bool flipped, int col, int row) => null;
 
   String _squareName(int file, int rank) {
     const files = 'abcdefgh';
@@ -105,7 +108,7 @@ class _SquareWidget extends StatelessWidget {
   final bool isValidMove;
   final bool isLastMoveSquare;
   final String? piece;
-  final String? label;
+  final String? showCoord;
 
   const _SquareWidget({
     required this.isLight,
@@ -113,7 +116,7 @@ class _SquareWidget extends StatelessWidget {
     required this.isValidMove,
     required this.isLastMoveSquare,
     this.piece,
-    this.label,
+    this.showCoord,
   });
 
   @override
@@ -128,40 +131,38 @@ class _SquareWidget extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Valid move indicator
           if (isValidMove)
             piece != null
                 ? Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(color: _validMoveHighlight, width: 3),
+                      border: Border.all(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        width: 3,
+                      ),
                     ),
                   )
-                : Container(
-                    width: 24,
-                    height: 24,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: _validMoveHighlight,
+                : Center(
+                    child: FractionallySizedBox(
+                      widthFactor: 0.33,
+                      heightFactor: 0.33,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black.withValues(alpha: 0.2),
+                        ),
+                      ),
                     ),
                   ),
-          if (piece != null)
-            FittedBox(
-              fit: BoxFit.contain,
-              child: Padding(
-                padding: const EdgeInsets.all(2),
-                child: Text(
-                  _pieceSymbols[piece] ?? '',
-                  style: TextStyle(
-                    fontSize: 36,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 2,
-                        offset: const Offset(1, 1),
-                      ),
-                    ],
-                  ),
-                ),
+
+          // Chess piece (cburnett SVG)
+          if (piece != null && kPieceSvgs.containsKey(piece))
+            Padding(
+              padding: const EdgeInsets.all(2),
+              child: SvgPicture.string(
+                kPieceSvgs[piece]!,
+                fit: BoxFit.contain,
               ),
             ),
         ],
@@ -169,3 +170,4 @@ class _SquareWidget extends StatelessWidget {
     );
   }
 }
+
