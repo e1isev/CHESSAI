@@ -1,7 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../models/game_state.dart';
-import '../data/piece_svgs.dart';
+import '../data/piece_pngs.dart';
 
 // Chess.com board colors
 const _lightSquare = Color(0xFFEEEED2);
@@ -156,13 +156,14 @@ class _SquareWidget extends StatelessWidget {
                     ),
                   ),
 
-          // Chess piece (cburnett SVG)
-          if (piece != null && kPieceSvgs.containsKey(piece))
+          // Chess piece image
+          if (piece != null && kPiecePngs.containsKey(piece))
             Padding(
               padding: const EdgeInsets.all(2),
-              child: SvgPicture.string(
-                kPieceSvgs[piece]!,
+              child: Image.memory(
+                base64Decode(kPiecePngs[piece]!),
                 fit: BoxFit.contain,
+                gaplessPlayback: true,
               ),
             ),
         ],
