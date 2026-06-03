@@ -185,6 +185,7 @@ class GameNotifier extends StateNotifier<GameState> {
     state = state.copyWith(isAiThinking: true, clearAiExplanation: true);
 
     String? uciMove;
+    final thinkStart = DateTime.now();
     try {
       if (_stockfishReady) {
         uciMove = await _stockfish.getBestMove(
@@ -195,6 +196,11 @@ class GameNotifier extends StateNotifier<GameState> {
       }
     } catch (_) {
       uciMove = null;
+    }
+    // Ensure the bot "thinking" indicator shows for at least 600ms
+    final elapsed = DateTime.now().difference(thinkStart).inMilliseconds;
+    if (elapsed < 600) {
+      await Future.delayed(Duration(milliseconds: 600 - elapsed));
     }
 
     // Fallback: pick a random legal move
