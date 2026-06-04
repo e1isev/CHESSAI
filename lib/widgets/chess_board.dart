@@ -46,6 +46,8 @@ class ChessBoard extends StatelessWidget {
                   final isValidMove = gameState.validMoveSquares.contains(square);
                   final isLastFrom = gameState.lastMoveFrom == square;
                   final isLastTo = gameState.lastMoveTo == square;
+                  final isBottomRow = flipped ? rowIdx == 0 : rowIdx == 7;
+                  final isLeftCol = colIdx == 0;
                   return Expanded(
                     child: GestureDetector(
                       onTap: () => onSquareTap(square),
@@ -55,7 +57,8 @@ class ChessBoard extends StatelessWidget {
                         isValidMove: isValidMove,
                         isLastMoveSquare: isLastFrom || isLastTo,
                         piece: piece,
-                        showCoord: _coordLabel(file, rank, flipped, colIdx, rowIdx),
+                        rankLabel: isLeftCol ? '${rank + 1}' : null,
+                        fileLabel: isBottomRow ? 'abcdefgh'[file] : null,
                       ),
                     ),
                   );
@@ -67,8 +70,6 @@ class ChessBoard extends StatelessWidget {
       ),
     );
   }
-
-  String? _coordLabel(int file, int rank, bool flipped, int col, int row) => null;
 
   String _squareName(int file, int rank) {
     const files = 'abcdefgh';
@@ -108,7 +109,8 @@ class _SquareWidget extends StatelessWidget {
   final bool isValidMove;
   final bool isLastMoveSquare;
   final String? piece;
-  final String? showCoord;
+  final String? rankLabel;
+  final String? fileLabel;
 
   const _SquareWidget({
     required this.isLight,
@@ -116,7 +118,8 @@ class _SquareWidget extends StatelessWidget {
     required this.isValidMove,
     required this.isLastMoveSquare,
     this.piece,
-    this.showCoord,
+    this.rankLabel,
+    this.fileLabel,
   });
 
   @override
@@ -126,11 +129,45 @@ class _SquareWidget extends StatelessWidget {
     if (isLastMoveSquare) bg = Color.alphaBlend(_lastMoveHighlight, base);
     if (isSelected) bg = Color.alphaBlend(_selectedHighlight, base);
 
+    final coordColor = isLight ? const Color(0xFF769656) : const Color(0xFFEEEED2);
+
     return Container(
       color: bg,
       child: Stack(
         alignment: Alignment.center,
         children: [
+          // Rank number in top-left corner
+          if (rankLabel != null)
+            Positioned(
+              top: 2,
+              left: 3,
+              child: Text(
+                rankLabel!,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: coordColor,
+                  height: 1,
+                ),
+              ),
+            ),
+
+          // File letter in bottom-right corner
+          if (fileLabel != null)
+            Positioned(
+              bottom: 2,
+              right: 3,
+              child: Text(
+                fileLabel!,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: coordColor,
+                  height: 1,
+                ),
+              ),
+            ),
+
           // Valid move indicator
           if (isValidMove)
             piece != null
