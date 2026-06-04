@@ -11,7 +11,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\replace_android_gra
 if errorlevel 1 goto failed
 
 echo.
-echo Verifying android\app\build.gradle no longer starts with the plugins DSL...
+echo Ensuring Gradle wrapper JAR exists locally...
+powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\ensure_gradle_wrapper.ps1"
+if errorlevel 1 goto failed
+
+echo.
+echo Verifying android\app\build.gradle uses the modern Flutter plugins DSL...
 powershell -NoProfile -Command "Get-Content 'android\app\build.gradle' -TotalCount 20"
 if errorlevel 1 goto failed
 
@@ -26,7 +31,7 @@ flutter pub get
 if errorlevel 1 goto failed
 
 echo.
-echo Android Gradle files were replaced. Now run:
+echo Android Gradle files were refreshed. Now run:
 echo flutter run
 exit /b 0
 

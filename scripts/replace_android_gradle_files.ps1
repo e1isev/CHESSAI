@@ -1,4 +1,4 @@
-# Replaces the Android Gradle files with the legacy Flutter Gradle setup and
+# Replaces the Android Gradle files with the modern Flutter Gradle setup and
 # upgraded toolchain versions expected by this project.
 #
 # Run from the repository root on Windows:
@@ -16,33 +16,23 @@ $settingsGradle = Join-Path $androidDir 'settings.gradle'
 $rootBuildGradle = Join-Path $androidDir 'build.gradle'
 $gradleProperties = Join-Path $androidDir 'gradle.properties'
 $wrapperProperties = Join-Path $androidDir 'gradle\wrapper\gradle-wrapper.properties'
+$ensureWrapperScript = Join-Path $scriptPath 'ensure_gradle_wrapper.ps1'
 
 $appBuildGradleContent = @'
-def localProperties = new Properties()
-def localPropertiesFile = rootProject.file('local.properties')
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.withReader('UTF-8') { reader ->
-        localProperties.load(reader)
-    }
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
 }
-
-def flutterRoot = localProperties.getProperty('flutter.sdk')
-if (flutterRoot == null) {
-    throw new GradleException("Flutter SDK not found. Define location with flutter.sdk in the local.properties file.")
-}
-
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply from: "$flutterRoot/packages/flutter_tools/gradle/flutter.gradle"
 
 android {
-    namespace "com.example.chess_ai_coach"
-    compileSdkVersion flutter.compileSdkVersion
-    ndkVersion flutter.ndkVersion
+    namespace = "com.example.chess_ai_coach"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
@@ -50,26 +40,56 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.example.chess_ai_coach"
-        minSdkVersion flutter.minSdkVersion
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        applicationId = "com.example.chess_ai_coach"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig = signingConfigs.debug
         }
     }
 }
 
 flutter {
-    source '../..'
+    source = '../..'
 }
 '@
 
 $settingsGradleContent = @'
+pluginManagement {
+    def flutterSdkPath = {
+        def properties = new Properties()
+        def localPropertiesFile = file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.withInputStream { properties.load(it) }
+        }
+
+        def flutterSdkPath = properties.getProperty("flutter.sdk") ?: System.getenv("FLUTTER_ROOT")
+        if (flutterSdkPath == null) {
+            throw new GradleException("Flutter SDK not found. Run `flutter pub get` from the repository root or define flutter.sdk in android/local.properties.")
+        }
+        return flutterSdkPath
+    }()
+
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    id "com.android.application" version "8.11.1" apply false
+    id "org.jetbrains.kotlin.android" version "2.0.21" apply false
+}
+
 include ':app'
 '@
 
@@ -110,7 +130,6 @@ $gradlePropertiesContent = @'
 org.gradle.jvmargs=-Xmx4G -XX:MaxMetaspaceSize=2G -XX:+HeapDumpOnOutOfMemoryError
 android.useAndroidX=true
 android.enableJetifier=true
-android.newDsl=false
 '@
 
 $wrapperPropertiesContent = @'
@@ -128,6 +147,8 @@ $utf8NoBom = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
 [System.IO.File]::WriteAllText($gradleProperties, $gradlePropertiesContent, $utf8NoBom)
 [System.IO.File]::WriteAllText($wrapperProperties, $wrapperPropertiesContent, $utf8NoBom)
 
+& $ensureWrapperScript
+
 $pathsToRemove = @(
     (Join-Path $androidDir '.gradle'),
     (Join-Path $repoRoot 'build')
@@ -139,6 +160,6 @@ foreach ($pathToRemove in $pathsToRemove) {
     }
 }
 
-Write-Host 'Replaced Android Gradle files.'
+Write-Host 'Replaced Android Gradle files with the modern Flutter plugin setup.'
 Write-Host 'Removed stale Android/Flutter build caches.'
 Write-Host 'Next: run flutter clean; flutter pub get; flutter run'
