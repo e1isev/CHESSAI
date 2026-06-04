@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/game_state.dart';
 import '../services/gemini_coaching_service.dart';
+import '../services/local_coaching_service.dart';
 import '../services/game_analyzer.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/move_list.dart';
@@ -38,9 +39,9 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
   }
 
   Future<void> _runAnalysis() async {
-    final claude = ref.read(geminiServiceProvider);
-    if (claude != null && widget.pgn.isNotEmpty) {
-      final result = await claude.analyzeGame(
+    if (widget.pgn.isNotEmpty) {
+      final local = ref.read(localCoachingServiceProvider);
+      final result = await local.analyzeGame(
         pgn: widget.pgn,
         moveHistory: widget.gameState.sanMoves,
       );
@@ -64,9 +65,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
         annotations: [],
       );
       await GameAnalyzer().saveGame(record);
-    } else {
-      setState(() => _loading = false);
     }
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
