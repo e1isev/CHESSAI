@@ -65,7 +65,7 @@ class ChessCoachApp extends StatelessWidget {
         bodyMedium: TextStyle(color: Colors.white70),
         bodySmall: TextStyle(color: Colors.white54),
       ),
-      dialogTheme: const DialogTheme(
+      dialogTheme: const DialogThemeData(
         backgroundColor: Color(0xFF0D2137),
         titleTextStyle: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
         contentTextStyle: TextStyle(color: Colors.white70),
