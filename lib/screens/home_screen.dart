@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/game_state.dart';
 import 'game_screen.dart';
@@ -17,105 +16,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   PlayerColor _playerColor = PlayerColor.white;
   int _difficulty = 3;
-  bool _apiKeySet = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadApiKey();
-  }
-
-  Future<void> _loadApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = prefs.getString('gemini_api_key') ?? '';
-    if (key.isNotEmpty) {
-      ref.read(apiKeyProvider.notifier).state = key;
-      setState(() => _apiKeySet = true);
-    } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showApiKeyDialog());
-    }
-  }
-
-  Future<void> _showApiKeyDialog({bool forceShow = false}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final existing = prefs.getString('gemini_api_key') ?? '';
-    final controller = TextEditingController(text: existing);
-
-    await showDialog(
-      context: context,
-      barrierDismissible: existing.isNotEmpty,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0D2137),
-        title: const Text(
-          'Gemini API Key',
-          style: TextStyle(color: Color(0xFFF4B942)),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Enter your Google Gemini API key (free at aistudio.google.com) to enable AI coaching features. '
-              'The app works offline for basic chess without a key.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'AIza...',
-                hintStyle: const TextStyle(color: Colors.white38),
-                filled: true,
-                fillColor: const Color(0xFF0A1628),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF1E3A5F)),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          if (existing.isNotEmpty)
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-          TextButton(
-            onPressed: () async {
-              await prefs.remove('gemini_api_key');
-              ref.read(apiKeyProvider.notifier).state = null;
-              if (mounted) setState(() => _apiKeySet = false);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Skip / Clear', style: TextStyle(color: Colors.white38)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final key = controller.text.trim();
-              if (key.isNotEmpty) {
-                await prefs.setString('gemini_api_key', key);
-                ref.read(apiKeyProvider.notifier).state = key;
-                if (mounted) setState(() => _apiKeySet = true);
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFF4B942),
-              foregroundColor: Colors.black,
-            ),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,11 +32,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               const SizedBox(height: 40),
 
-              // API key status
-              _ApiKeyBanner(
-                isSet: _apiKeySet,
-                onTap: () => _showApiKeyDialog(forceShow: true),
-              ),
+              // Coaching status
+              const _LocalCoachingBanner(),
 
               const SizedBox(height: 32),
 
@@ -285,53 +182,29 @@ class _Logo extends StatelessWidget {
   }
 }
 
-class _ApiKeyBanner extends StatelessWidget {
-  final bool isSet;
-  final VoidCallback onTap;
-
-  const _ApiKeyBanner({required this.isSet, required this.onTap});
+class _LocalCoachingBanner extends StatelessWidget {
+  const _LocalCoachingBanner();
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: isSet
-              ? Colors.green.withValues(alpha: 0.1)
-              : Colors.orange.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSet
-                ? Colors.green.withValues(alpha: 0.3)
-                : Colors.orange.withValues(alpha: 0.3),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.green.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.offline_bolt, color: Colors.greenAccent, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Local coaching active — no internet or API key needed',
+              style: TextStyle(color: Colors.greenAccent, fontSize: 13),
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              isSet ? Icons.check_circle_outline : Icons.warning_amber_outlined,
-              color: isSet ? Colors.greenAccent : Colors.orange,
-              size: 18,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                isSet
-                    ? 'Gemini AI coaching enabled (free)'
-                    : 'No API key — coaching disabled. Tap to add.',
-                style: TextStyle(
-                  color: isSet ? Colors.greenAccent : Colors.orange,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-            Icon(Icons.edit_outlined,
-                color: (isSet ? Colors.greenAccent : Colors.orange).withValues(alpha: 0.6),
-                size: 16),
-          ],
-        ),
+        ],
       ),
     );
   }
