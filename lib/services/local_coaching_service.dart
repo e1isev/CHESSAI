@@ -23,32 +23,106 @@ class LocalCoachingService {
     chess.load(fen);
     final moveNum = moveHistory.length;
     final color = _chessColor(playerColor);
+    final opp = color == chess_lib.Color.WHITE
+        ? chess_lib.Color.BLACK
+        : chess_lib.Color.WHITE;
 
-    // ── Tactical alerts (highest priority) ───────────────────────────────
-    // After player moves it's opponent's turn, so warn about opponent threats.
+    // ── 1. Hanging piece (immediate danger) ──────────────────────────────────
     final hanging = TacticsDetector.hangingPiece(chess, color);
     if (hanging != null) {
       final name = TacticsDetector.pieceName(hanging.piece);
       final pawns = (hanging.gain / 100).toStringAsFixed(1);
       return hanging.gain >= 300
-          ? 'Danger: your $name on ${hanging.square} is hanging and can be won for ~$pawns pawns! Move it or defend it before it\'s too late.'
-          : 'Watch out — your $name on ${hanging.square} might be captured for a ~$pawns-pawn swing. Make sure it\'s properly defended.';
+          ? 'Danger — Hanging Piece: Your $name on ${hanging.square} is undefended and can be captured for ~$pawns pawns! A "hanging" piece is one that can be taken for free. Move it to safety or add a defender immediately.'
+          : 'Watch out — Hanging Piece: Your $name on ${hanging.square} is at risk for a ~$pawns-pawn swing. Make sure it\'s properly defended before making another plan.';
     }
 
-    // ── Opening phase ─────────────────────────────────────────────────────
-    if (moveNum <= 14) {
-      return _openingTip(chess, color, moveHistory, moveNum, lastMove);
+    // ── 2. Back-rank weakness ─────────────────────────────────────────────────
+    if (TacticsDetector.hasBackRankThreat(chess, color)) {
+      return 'Warning — Back-Rank Weakness: Your king has no escape squares on the back rank and your opponent has a rook or queen. This is the classic "back-rank mate" pattern! Play h3 (or h6 as Black) to create a "luft" — a breathing square — for your king. This is a basic king safety principle.';
     }
 
-    // ── Fork hints ────────────────────────────────────────────────────────
+    // ── 3. Player\'s own pieces are pinned ────────────────────────────────────
+    final myPins = TacticsDetector.detectPins(chess, color);
+    if (myPins.isNotEmpty) {
+      final pin = myPins.first;
+      final pinnedName = TacticsDetector.pieceName(pin.pinnedPiece);
+      final attackerName = TacticsDetector.pieceName(pin.attackerPiece);
+      return 'Careful — Pin: Your $pinnedName on ${pin.pinnedSquare} is pinned by the opponent\'s $attackerName on ${pin.attackerSquare}. A pinned piece can\'t move safely because it would expose a more valuable piece behind it. Break the pin by blocking with another piece, moving the piece behind it, or capturing the pinning piece.';
+    }
+
+    // ── 4. Opponent has pinned pieces (exploit it) ───────────────────────────
+    final oppPins = TacticsDetector.detectOpponentPins(chess, color);
+    if (oppPins.isNotEmpty) {
+      final pin = oppPins.first;
+      final pinnedName = TacticsDetector.pieceName(pin.pinnedPiece);
+      return 'Opportunity — Exploit the Pin: Your opponent\'s ${pinnedName} on ${pin.pinnedSquare} is pinned — it can\'t safely move! A pinned piece is a weak piece. Attack it with a pawn or another piece to win material, since the pinned piece can\'t run.';
+    }
+
+    // ── 5. Fork opportunities ─────────────────────────────────────────────────
     final fork = TacticsDetector.knightFork(chess, color)
         ?? TacticsDetector.pawnFork(chess, color);
     if (fork != null) {
       final name = TacticsDetector.pieceName(fork.piece);
-      return 'Tactical opportunity: look at advancing your $name to ${fork.square} — it would attack two opponent pieces at once. That\'s a fork!';
+      final type = fork.piece == chess_lib.PieceType.KNIGHT ? 'Knight Fork' : 'Pawn Fork';
+      return 'Tactic — $type: Your $name can move to ${fork.square} and attack two opponent pieces simultaneously! A "fork" is when one piece attacks two at once — your opponent can only save one, so you win the other. Don\'t miss this!';
     }
 
-    // ── Middlegame / endgame ───────────────────────────────────────────────
+    // ── 6. Free captures ─────────────────────────────────────────────────────
+    final capture = TacticsDetector.bestCapture(chess, color);
+    if (capture != null && capture.gain >= 200) {
+      final name = TacticsDetector.pieceName(capture.piece);
+      final pawns = (capture.gain / 100).toStringAsFixed(1);
+      return 'Free Material: You can capture the ${name} on ${capture.square} for approximately $pawns pawns of material with no loss! Always scan the board for undefended or underdefended pieces before choosing your move.';
+    }
+
+    // ── 7. Opening phase ──────────────────────────────────────────────────────
+    if (moveNum <= 14) {
+      return _openingTip(chess, color, moveHistory, moveNum, lastMove);
+    }
+
+    // ── 8. Passed pawns ───────────────────────────────────────────────────────
+    final passed = TacticsDetector.passedPawns(chess, color);
+    if (passed.isNotEmpty) {
+      final sq = passed.first;
+      final file = sq[0];
+      return 'Advantage — Passed Pawn: You have a passed pawn on $sq! A "passed pawn" has no enemy pawns blocking its path to promotion on the $file-file. Passed pawns are one of the strongest long-term advantages — push it forward, support it with your rooks from behind, and aim to queen it!';
+    }
+
+    // ── 9. Open file rooks ────────────────────────────────────────────────────
+    final openRooks = TacticsDetector.openFileRooks(chess, color);
+    if (openRooks.isNotEmpty) {
+      final rook = openRooks.first;
+      final fileType = rook.isOpen ? 'open' : 'semi-open';
+      return 'Strategy — Rook on ${rook.isOpen ? "Open" : "Semi-Open"} File: Your rook on ${rook.square} is on the ${rook.file}-file, which is $fileType. Rooks are at their strongest on open files with no pawns blocking their vision. Consider doubling your rooks on this file or invading the opponent\'s 7th rank — that\'s where rooks wreak havoc!';
+    }
+
+    // ── 10. Pawn structure weaknesses ────────────────────────────────────────
+    final pawnStructure = TacticsDetector.analyzePawnStructure(chess, color);
+    if (pawnStructure.doubled.isNotEmpty) {
+      final sq = pawnStructure.doubled.first;
+      final file = sq[0];
+      return 'Structure — Doubled Pawns: You have doubled pawns on the $file-file (${sq}). Doubled pawns are a structural weakness because they can\'t protect each other and one of them is often a target. Try to trade one off, open a different file with your rooks, or use the half-open file your opponent gets as compensation for your activity.';
+    }
+    if (pawnStructure.isolated.isNotEmpty) {
+      final sq = pawnStructure.isolated.first;
+      final file = sq[0];
+      return 'Structure — Isolated Pawn: Your pawn on $sq is isolated — there are no friendly pawns on adjacent files to protect it. Isolated pawns can be a target in the endgame. Either trade it off, use it to control key squares, or keep the position active so your opponent can\'t easily attack it.';
+    }
+
+    // ── 11. King safety warning ────────────────────────────────────────────────
+    final kingScore = TacticsDetector.kingSafetyScore(chess, color);
+    if (kingScore < 40 && !_isEndgame(chess)) {
+      return 'King Safety Alert: Your king safety score is low — your king\'s pawn shield is thin and nearby files may be open for attack. In the middlegame, an exposed king is a huge liability. Consider creating "luft" (h3/g3 or h6/g6 as Black), keeping pawns in front of your king, and avoiding opening files near your king unless you\'re initiating the attack.';
+    }
+
+    // ── 12. Opponent king safety opportunity ──────────────────────────────────
+    final oppKingScore = TacticsDetector.kingSafetyScore(chess, opp);
+    if (oppKingScore < 35 && !_isEndgame(chess)) {
+      return 'Attack — Weak Opponent King: Your opponent\'s king safety is poor! Their king has few pawn defenders and exposed files nearby. This is the moment to launch an attack — bring your pieces toward their king, open files with pawn pushes, and look for sacrifices to break through their defenses. Attack where your opponent is weakest!';
+    }
+
+    // ── 13. Middlegame / endgame ───────────────────────────────────────────────
     return _middlegameTip(chess, lastMove, moveNum);
   }
 
@@ -67,6 +141,15 @@ class LocalCoachingService {
     chess.load(fen);
     final color = _chessColor(playerColor);
 
+    // Check if AI just created a pin
+    final oppPins = TacticsDetector.detectOpponentPins(chess, color);
+    if (oppPins.isNotEmpty) {
+      final pin = oppPins.first;
+      final name = TacticsDetector.pieceName(pin.pinnedPiece);
+      return '$base Notice: I just pinned your ${name} on ${pin.pinnedSquare}! A pinned piece can\'t move safely. Attack it to win material.';
+    }
+
+    // Check for free captures
     final capture = TacticsDetector.bestCapture(chess, color);
     if (capture != null && capture.gain >= 200) {
       final name = TacticsDetector.pieceName(capture.piece);
@@ -74,11 +157,18 @@ class LocalCoachingService {
       return '$base Now look carefully — you can win a $name on ${capture.square} for about $pawns pawns!';
     }
 
+    // Check for fork opportunities
     final fork = TacticsDetector.knightFork(chess, color)
         ?? TacticsDetector.pawnFork(chess, color);
     if (fork != null) {
       final name = TacticsDetector.pieceName(fork.piece);
-      return '$base There\'s a fork available! Try moving your $name to ${fork.square} to attack two pieces at once.';
+      return '$base There\'s a fork available! Try moving your $name to ${fork.square} to attack two pieces at once — that\'s a fork!';
+    }
+
+    // Check for passed pawn opportunity
+    final passed = TacticsDetector.passedPawns(chess, color);
+    if (passed.isNotEmpty) {
+      return '$base You have a passed pawn on ${passed.first} — push it! Passed pawns are winning advantages.';
     }
 
     return base;
@@ -177,8 +267,7 @@ class LocalCoachingService {
     if (opening != null &&
         moveNum >= opening.moves.length &&
         moveNum <= opening.moves.length + 5) {
-      return 'You\'re playing the ${opening.name}. '
-          'Key plan: ${opening.plan}';
+      return 'Opening — ${opening.name}: You\'re playing the ${opening.name}. Key plan: ${opening.plan}';
     }
 
     // Generic opening principle checks
@@ -189,20 +278,20 @@ class LocalCoachingService {
         _findKing(chess, color) == (isWhite ? 'e1' : 'e8');
 
     if (moveNum <= 4 && _centerPawns(chess, color) == 0) {
-      return 'Opening principle: fight for the center! A pawn on e4 or d4 gives your pieces room and controls key squares.';
+      return 'Opening Principle — Control the Center: Fight for the center with e4 or d4! The four central squares (e4, d4, e5, d5) are the most important squares in chess — whoever controls them has more space and better piece mobility. Central pawns are the foundation of a good opening.';
     }
     if (undeveloped >= 3 && moveNum >= 4) {
-      return 'Your knights and bishops are still on their starting squares. Develop them before pushing more pawns or moving the queen out early.';
+      return 'Opening Principle — Develop Your Pieces: Your knights and bishops are still on their starting squares. Development means bringing pieces to active squares where they control the center and support each other. Develop before pushing pawns or moving your queen — a general rule is "knights before bishops."';
     }
     if (notCastled && undeveloped <= 1 && moveNum >= 6) {
-      return 'Your pieces look well developed! Castle now to protect your king and connect your rooks — two benefits in one move.';
+      return 'Opening Principle — Castle Now: Your pieces look well developed! Castling does two things at once: it moves your king to safety behind a pawn wall, and it connects your rooks so they can work together. Castle before launching your middlegame attack — a king in the center in an open position is a serious danger.';
     }
 
     const tips = [
-      'Each opening move should do something useful: develop a piece, control the center, or improve king safety.',
-      'Avoid moving the same piece twice in the opening unless you gain material or are forced to.',
-      'After developing your pieces, look for an opportunity to castle. A safe king is a long-term advantage.',
-      'Think about the center — whoever controls e4, d4, e5, d5 usually has more space to maneuver.',
+      'Opening Principle: Every move in the opening should develop a piece, control the center, or improve king safety. Don\'t waste moves on unnecessary pawn pushes or moving the same piece twice.',
+      'Opening Principle — Knights Before Bishops: Develop your knights first! Knights always go to f3/c3 (or f6/c6 for Black) — those squares are almost always correct. Bishops wait to see which direction the center goes before committing.',
+      'Opening Principle — Don\'t Move Pieces Twice: Unless you gain material or are forced to, avoid moving the same piece twice in the opening. Every wasted move is a tempo your opponent uses to develop and attack.',
+      'Opening Principle — Think About the Center: The player with more central space usually has more options. Your pawns and pieces should fight for e4, d4, e5, d5 — the heart of the board.',
     ];
     return tips[moveNum % tips.length];
   }
@@ -211,26 +300,25 @@ class LocalCoachingService {
 
   String _middlegameTip(chess_lib.Chess chess, String lastMove, int moveNum) {
     if (_isEndgame(chess)) {
-      return 'Endgame reached! Activate your king — it becomes a powerful attacker and defender once queens are off the board. Push your passed pawns!';
+      return 'Endgame — Activate Your King: Queens are off the board — your king becomes a powerful fighting piece! In the endgame, an active king is often the difference between winning and drawing. March your king toward the center, support your passed pawns from behind with rooks, and push your pawns to promote.';
     }
 
     final balance = _materialBalance(chess);
     if (lastMove.contains('x') && balance.abs() >= 200) {
-      final side = balance > 0 ? 'ahead' : 'behind';
       final diff = (balance.abs() / 100).toStringAsFixed(1);
       return balance > 0
-          ? 'After that exchange, you\'re $side by ~$diff pawns. Simplify toward an endgame to convert your advantage.'
-          : 'After that exchange, you\'re $side by ~$diff pawns. Look for active counterplay, tactics, or piece activity to compensate.';
+          ? 'Material Advantage: You\'re ahead by ~$diff pawns of material. The winning strategy when ahead is to simplify — trade pieces (not pawns) to reach an endgame where your extra material decides the game. Don\'t give your opponent counterplay with unnecessary risks.'
+          : 'Material Deficit: You\'re down by ~$diff pawns. When behind in material, avoid simplification — you need complications! Look for tactical tricks, active piece play, and counterattacking chances. Sometimes activity and initiative can compensate for material.';
     }
 
     const tips = [
-      'Before every move, check: does my opponent have a threat I must deal with first?',
-      'Find your least active piece and ask: what\'s the best square for it? Improving one piece per move adds up.',
-      'Scan for tactics: forks (one piece attacks two), pins (piece can\'t move safely), and skewers (reverse pin).',
-      'Rooks belong on open files and the 7th rank. If the center is open, activate your rooks now.',
-      'Passed pawns — pawns with no opposing pawns on the same or adjacent files — are a big endgame advantage. Push them!',
-      'Don\'t rush: if you\'re ahead in material, simplify. If you\'re behind, create complications and look for counterplay.',
-      'Weak squares near the opponent\'s king are targets. Plant a piece on a weak square and your opponent can\'t easily dislodge it.',
+      'Middlegame Principle — Check for Threats First: Before every move, scan the board and ask: "Does my opponent have a threat I must deal with?" Responding to threats before making your own plan is the first rule of good chess.',
+      'Middlegame Principle — Improve Your Worst Piece: Find your least active piece and ask: "What\'s the best square for it?" Moving a piece from a bad square to a good one is often stronger than complicated tactics. Chess is won by small improvements.',
+      'Middlegame Principle — Scan for Tactics: After your opponent moves, always check for tactical patterns: forks (one piece attacks two), pins (piece can\'t move safely), skewers (reverse pin), and discovered attacks (moving one piece to reveal another\'s attack).',
+      'Middlegame Principle — Rooks on Open Files: Rooks are at their best on open files (files with no pawns). An open file is a highway for your rook to invade your opponent\'s position. Create open files by trading pawns, then double your rooks for maximum power.',
+      'Middlegame Principle — Weak Squares: A "weak square" is one that can\'t be defended by a pawn. Plant a piece on a weak square in your opponent\'s camp — especially near their king — and it becomes an outpost that\'s very hard to dislodge.',
+      'Middlegame Principle — When Ahead, Simplify: If you\'re winning, trade pieces to reduce your opponent\'s counterplay. If you\'re losing, keep pieces on the board and look for complications. The side with more material wants a simpler position.',
+      'Middlegame Principle — King Safety: Never let your king safety slip, even when attacking. Make sure your king has a safe shelter — usually castled behind pawns. Before launching an attack, ask: "Is my own king safe enough?"',
     ];
     return tips[moveNum % tips.length];
   }
@@ -280,15 +368,14 @@ class LocalCoachingService {
     return 'Tough $length game$openingStr of $moveCount moves. Every game teaches something — dig into the mistakes below and you\'ll improve quickly!';
   }
 
-  String _buildAdvice(List<MistakeEntry> mistakes, int moveCount,
-      opening) {
+  String _buildAdvice(List<MistakeEntry> mistakes, int moveCount, opening) {
     if (mistakes.isEmpty) {
       return 'No major material swings — excellent game! Work on converting small advantages cleanly in future games.';
     }
     if (moveCount <= 20) {
-      return 'Focus on opening principles: develop all minor pieces, control the center, and castle before move 10 when possible.';
+      return 'Focus on opening principles: develop all minor pieces (knights and bishops), control the center with pawns, and castle before move 10 when possible. A good opening leads to a good middlegame.';
     }
-    return 'Study the positions before your biggest material losses. Before each capture, always ask: "What does my opponent get back?"';
+    return 'Study the positions before your biggest material losses. Before each capture ask: "What does my opponent get back?" This simple question prevents most tactical blunders.';
   }
 
   // ── Board helpers ─────────────────────────────────────────────────────────
