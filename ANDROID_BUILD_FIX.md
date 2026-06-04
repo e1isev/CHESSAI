@@ -52,3 +52,46 @@ plugins {
 ```
 
 If it starts with `plugins {`, your local Android Gradle file is still the version that triggers the `dev.flutter.flutter-gradle-plugin` failure.
+
+## 5. If `git pull` says you have unmerged files
+
+This means Git is currently paused in the middle of a merge conflict. You must either abort the merge or finish resolving conflicts before another `git pull` can work.
+
+### Option A: discard the conflicted local merge and pull again
+
+Use this if you do not need to keep local edits:
+
+```powershell
+git merge --abort
+git status
+git pull
+```
+
+If `git merge --abort` says there is no merge to abort, use:
+
+```powershell
+git reset --hard HEAD
+git clean -fd
+git pull
+```
+
+### Option B: resolve the conflict manually
+
+Use this if you need to keep local edits:
+
+```powershell
+git status
+```
+
+Open each file listed as unmerged, remove the conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`), save the file, then mark it resolved:
+
+```powershell
+git add <file-that-you-fixed>
+git commit
+```
+
+After the merge commit completes, run:
+
+```powershell
+git pull
+```

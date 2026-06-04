@@ -16,6 +16,8 @@ build/
 **/android/**/gradle-wrapper.jar
 **/android/.gradle
 **/android/captures/
+**/android/gradlew.bat
+**/android/gradlew
 **/android/local.properties
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
