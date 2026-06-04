@@ -264,6 +264,7 @@ class GameNotifier extends StateNotifier<GameState> {
       move: move,
       fen: state.fen,
       moveHistory: state.sanMoves,
+      playerColor: state.playerColor,
     );
     if (mounted) {
       state = state.copyWith(aiMoveExplanation: explanation);
