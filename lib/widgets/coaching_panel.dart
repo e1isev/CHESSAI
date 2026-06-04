@@ -22,8 +22,6 @@ class _CoachingPanelState extends State<CoachingPanel> {
         gs.isAiThinking ||
         gs.isLoadingCoaching;
 
-    if (!hasContent) return const SizedBox.shrink();
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -43,14 +41,31 @@ class _CoachingPanelState extends State<CoachingPanel> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: [
-                  const Icon(Icons.school, color: Color(0xFFF4B942), size: 18),
+                  const Icon(Icons.offline_bolt, color: Color(0xFFF4B942), size: 18),
                   const SizedBox(width: 8),
                   const Text(
-                    'Chess Coach',
+                    'Local Coach',
                     style: TextStyle(
                       color: Color(0xFFF4B942),
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.greenAccent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.greenAccent.withValues(alpha: 0.4)),
+                    ),
+                    child: const Text(
+                      'offline',
+                      style: TextStyle(
+                        color: Colors.greenAccent,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const Spacer(),
@@ -67,33 +82,38 @@ class _CoachingPanelState extends State<CoachingPanel> {
             const Divider(height: 1, color: Color(0xFF1E3A5F)),
             Padding(
               padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (gs.blunderWarning != null)
-                    _TipRow(
-                      icon: Icons.warning_amber_rounded,
-                      color: Colors.orange,
-                      text: gs.blunderWarning!,
+              child: hasContent
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (gs.blunderWarning != null)
+                          _TipRow(
+                            icon: Icons.warning_amber_rounded,
+                            color: Colors.orange,
+                            text: gs.blunderWarning!,
+                          ),
+                        if (gs.isAiThinking)
+                          const _LoadingRow(text: 'AI is thinking...'),
+                        if (gs.aiMoveExplanation != null)
+                          _TipRow(
+                            icon: Icons.smart_toy_outlined,
+                            color: const Color(0xFF64B5F6),
+                            text: gs.aiMoveExplanation!,
+                          ),
+                        if (gs.isLoadingCoaching && gs.lastCoachingTip == null)
+                          const _LoadingRow(text: 'Analyzing position...'),
+                        if (gs.lastCoachingTip != null)
+                          _TipRow(
+                            icon: Icons.lightbulb_outline,
+                            color: const Color(0xFFF4B942),
+                            text: gs.lastCoachingTip!,
+                          ),
+                      ],
+                    )
+                  : const Text(
+                      'Make your first move — the local coach will analyze each position using Stockfish.',
+                      style: TextStyle(color: Colors.white38, fontSize: 13, height: 1.4),
                     ),
-                  if (gs.isAiThinking)
-                    const _LoadingRow(text: 'AI is thinking...'),
-                  if (gs.aiMoveExplanation != null)
-                    _TipRow(
-                      icon: Icons.smart_toy_outlined,
-                      color: const Color(0xFF64B5F6),
-                      text: gs.aiMoveExplanation!,
-                    ),
-                  if (gs.isLoadingCoaching && gs.lastCoachingTip == null)
-                    const _LoadingRow(text: 'Coach is analyzing...'),
-                  if (gs.lastCoachingTip != null)
-                    _TipRow(
-                      icon: Icons.lightbulb_outline,
-                      color: const Color(0xFFF4B942),
-                      text: gs.lastCoachingTip!,
-                    ),
-                ],
-              ),
             ),
           ],
         ],
