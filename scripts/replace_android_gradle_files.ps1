@@ -3,8 +3,6 @@
 #
 # Run from the repository root on Windows:
 #   powershell -ExecutionPolicy Bypass -File scripts\replace_android_gradle_files.ps1
-# Or double-click/run from repo root:
-#   FIX_ANDROID_BUILD.bat
 
 Set-StrictMode -Version Latest
 
@@ -128,17 +126,5 @@ $utf8NoBom = New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false
 [System.IO.File]::WriteAllText($gradleProperties, $gradlePropertiesContent, $utf8NoBom)
 [System.IO.File]::WriteAllText($wrapperProperties, $wrapperPropertiesContent, $utf8NoBom)
 
-$pathsToRemove = @(
-    (Join-Path $androidDir '.gradle'),
-    (Join-Path $repoRoot 'build')
-)
-
-foreach ($pathToRemove in $pathsToRemove) {
-    if (Test-Path $pathToRemove) {
-        Remove-Item -LiteralPath $pathToRemove -Recurse -Force
-    }
-}
-
 Write-Host 'Replaced Android Gradle files.'
-Write-Host 'Removed stale Android/Flutter build caches.'
 Write-Host 'Next: run flutter clean; flutter pub get; flutter run'
