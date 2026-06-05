@@ -9,8 +9,9 @@ const _darkSquare = Color(0xFF769656);
 const _selectedHighlight = Color(0xAA20C020);
 const _validMoveHighlight = Color(0x8820C020);
 const _lastMoveHighlight = Color(0xAAF6F669);
+const _files = 'abcdefgh';
 
-
+/// Interactive chess board with algebraic file/rank notation.
 class ChessBoard extends StatelessWidget {
   final GameState gameState;
   final void Function(String square) onSquareTap;
@@ -48,17 +49,23 @@ class ChessBoard extends StatelessWidget {
                   final isLastTo = gameState.lastMoveTo == square;
                   final isBottomRow = flipped ? rowIdx == 0 : rowIdx == 7;
                   final isLeftCol = colIdx == 0;
+                  final fileLabel = isBottomRow ? _files[file] : null;
+                  final rankLabel = isLeftCol ? '${rank + 1}' : null;
                   return Expanded(
-                    child: GestureDetector(
-                      onTap: () => onSquareTap(square),
-                      child: _SquareWidget(
-                        isLight: isLight,
-                        isSelected: isSelected,
-                        isValidMove: isValidMove,
-                        isLastMoveSquare: isLastFrom || isLastTo,
-                        piece: piece,
-                        rankLabel: isLeftCol ? '${rank + 1}' : null,
-                        fileLabel: isBottomRow ? 'abcdefgh'[file] : null,
+                    child: Semantics(
+                      label: 'Square $square',
+                      button: true,
+                      child: GestureDetector(
+                        onTap: () => onSquareTap(square),
+                        child: _SquareWidget(
+                          isLight: isLight,
+                          isSelected: isSelected,
+                          isValidMove: isValidMove,
+                          isLastMoveSquare: isLastFrom || isLastTo,
+                          piece: piece,
+                          rankLabel: rankLabel,
+                          fileLabel: fileLabel,
+                        ),
                       ),
                     ),
                   );
@@ -72,8 +79,7 @@ class ChessBoard extends StatelessWidget {
   }
 
   String _squareName(int file, int rank) {
-    const files = 'abcdefgh';
-    return '${files[file]}${rank + 1}';
+    return '${_files[file]}${rank + 1}';
   }
 
   Map<String, String> _parseFen(String fen) {
@@ -81,7 +87,6 @@ class ChessBoard extends StatelessWidget {
     final board = parts[0];
     final rows = board.split('/');
     final result = <String, String>{};
-    const files = 'abcdefgh';
 
     for (int rankIdx = 0; rankIdx < 8; rankIdx++) {
       final rank = 7 - rankIdx;
@@ -94,7 +99,7 @@ class ChessBoard extends StatelessWidget {
         } else {
           final color = c == c.toUpperCase() ? 'w' : 'b';
           final type = c.toUpperCase();
-          result['${files[file]}${rank + 1}'] = '$color$type';
+          result['${_files[file]}${rank + 1}'] = '$color$type';
           file++;
         }
       }
@@ -129,45 +134,15 @@ class _SquareWidget extends StatelessWidget {
     if (isLastMoveSquare) bg = Color.alphaBlend(_lastMoveHighlight, base);
     if (isSelected) bg = Color.alphaBlend(_selectedHighlight, base);
 
-    final coordColor = isLight ? const Color(0xFF769656) : const Color(0xFFEEEED2);
+    final coordColor = isLight
+        ? const Color(0xFF769656)
+        : const Color(0xFFEEEED2);
 
     return Container(
       color: bg,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Rank number in top-left corner
-          if (rankLabel != null)
-            Positioned(
-              top: 2,
-              left: 3,
-              child: Text(
-                rankLabel!,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: coordColor,
-                  height: 1,
-                ),
-              ),
-            ),
-
-          // File letter in bottom-right corner
-          if (fileLabel != null)
-            Positioned(
-              bottom: 2,
-              right: 3,
-              child: Text(
-                fileLabel!,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: coordColor,
-                  height: 1,
-                ),
-              ),
-            ),
-
           // Valid move indicator
           if (isValidMove)
             piece != null
@@ -203,9 +178,69 @@ class _SquareWidget extends StatelessWidget {
                 gaplessPlayback: true,
               ),
             ),
+
+          // Algebraic notation stays above pieces so coordinates remain readable.
+          if (rankLabel != null || fileLabel != null)
+            _AlgebraicNotationLabels(
+              rankLabel: rankLabel,
+              fileLabel: fileLabel,
+              color: coordColor,
+            ),
         ],
       ),
     );
   }
 }
 
+class _AlgebraicNotationLabels extends StatelessWidget {
+  final String? rankLabel;
+  final String? fileLabel;
+  final Color color;
+
+  const _AlgebraicNotationLabels({
+    required this.rankLabel,
+    required this.fileLabel,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = TextStyle(
+      fontSize: 10,
+      fontWeight: FontWeight.bold,
+      color: color,
+      height: 1,
+      shadows: const [
+        Shadow(
+          color: Color(0x66000000),
+          offset: Offset(0, 0.5),
+          blurRadius: 1,
+        ),
+      ],
+    );
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(
+          children: [
+            // Rank number in top-left corner.
+            if (rankLabel != null)
+              Positioned(
+                top: 2,
+                left: 3,
+                child: Text(rankLabel!, style: textStyle),
+              ),
+
+            // File letter in bottom-right corner.
+            if (fileLabel != null)
+              Positioned(
+                bottom: 2,
+                right: 3,
+                child: Text(fileLabel!, style: textStyle),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
