@@ -8,11 +8,11 @@ class StockfishService {
   bool _isReady = false;
 
   static const Map<int, int> _difficultyToElo = {
-    1: 400,
-    2: 800,
-    3: 1200,
-    4: 1600,
-    5: 2000,
+    1: 800,
+    2: 1100,
+    3: 1400,
+    4: 1800,
+    5: 2400,
   };
 
   Future<void> init() async {

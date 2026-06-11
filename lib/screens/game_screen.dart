@@ -187,7 +187,7 @@ class GameNotifier extends StateNotifier<GameState> {
         uciMove = await _stockfish.getBestMove(
           fen: _chess.fen,
           difficulty: state.difficulty,
-          thinkTimeMs: 1000 + state.difficulty * 200,
+          thinkTimeMs: 1500 + state.difficulty * 300,
         );
       }
     } catch (_) {
