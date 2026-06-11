@@ -224,7 +224,7 @@ class LocalCoachingService {
       final after = _materialBalance(chess);
       final swing = after - before;
 
-      if (swing <= -150 && mistakes.length < 3) {
+      if (swing <= -100 && mistakes.length < 5) {
         final pawns = (swing.abs() / 100).toStringAsFixed(1);
         mistakes.add(MistakeEntry(
           move: san,
@@ -245,9 +245,8 @@ class LocalCoachingService {
       }
     }
 
-    var score = 70 - (mistakes.length * 10) + (bestMove != null ? 5 : 0);
-    score += (moveHistory.length / 8).clamp(0, 10).toInt();
-    score = score.clamp(10, 95);
+    var score = 60 - (mistakes.length * 15) + (bestMove != null ? 5 : 0);
+    score = score.clamp(5, 85);
 
     return PostGameAnalysis(
       score: score,
