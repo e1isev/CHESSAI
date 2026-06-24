@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/game_state.dart';
+import '../version_info.dart';
 import 'game_screen.dart';
 import 'history_screen.dart';
 import 'progress_screen.dart';
@@ -65,6 +66,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _DifficultyPicker(
                 selected: _difficulty,
                 onSelect: (d) => setState(() => _difficulty = d),
+                eloFor: ref.watch(stockfishServiceProvider).eloFor,
               ),
 
               const Spacer(),
@@ -130,7 +132,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ],
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              Text(
+                'Last updated $kAppLastUpdated',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -308,8 +315,13 @@ class _ColorOption extends StatelessWidget {
 class _DifficultyPicker extends StatelessWidget {
   final int selected;
   final void Function(int) onSelect;
+  final int Function(int) eloFor;
 
-  const _DifficultyPicker({required this.selected, required this.onSelect});
+  const _DifficultyPicker({
+    required this.selected,
+    required this.onSelect,
+    required this.eloFor,
+  });
 
   static const labels = {1: 'Novice', 2: 'Beginner', 3: 'Casual', 4: 'Club', 5: 'Master'};
 
@@ -353,7 +365,7 @@ class _DifficultyPicker extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          labels[selected] ?? 'Level $selected',
+          '${labels[selected] ?? 'Level $selected'} · ${eloFor(selected)} Elo',
           style: const TextStyle(color: Color(0xFFF4B942), fontSize: 13),
         ),
       ],

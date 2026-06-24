@@ -388,12 +388,10 @@ class GameNotifier extends StateNotifier<GameState> {
     }
     _performance = _performance.clamp(-6, 6);
 
-    var adjustment = 0;
-    if (_performance <= -3) {
-      adjustment = -1;
-    } else if (_performance >= 3) {
-      adjustment = 1;
-    }
+    // The bot only ever ramps up to punish a struggling player harder —
+    // mirroring chess.com bots, it never deliberately softens to let
+    // someone win.
+    final adjustment = _performance >= 3 ? 1 : 0;
     return (state.difficulty + adjustment).clamp(1, 5);
   }
 
@@ -456,6 +454,7 @@ class GameScreen extends ConsumerWidget {
             const Spacer(),
             _DifficultyBadge(
               difficulty: gs.effectiveDifficulty,
+              elo: ref.watch(stockfishServiceProvider).eloFor(gs.effectiveDifficulty),
               isAdapted: gs.effectiveDifficulty != gs.difficulty,
               adaptedUp: gs.effectiveDifficulty > gs.difficulty,
             ),
@@ -475,6 +474,7 @@ class GameScreen extends ConsumerWidget {
             // Bot player bar (top — opponent)
             _BotPlayerBar(
               difficulty: gs.effectiveDifficulty,
+              elo: ref.watch(stockfishServiceProvider).eloFor(gs.effectiveDifficulty),
               isAdapted: gs.effectiveDifficulty != gs.difficulty,
               personality: ref.watch(stockfishServiceProvider).personalityFor(gs.difficulty),
               isThinking: gs.isAiThinking,
@@ -608,11 +608,13 @@ class _StatusBar extends StatelessWidget {
 
 class _DifficultyBadge extends StatelessWidget {
   final int difficulty;
+  final int? elo;
   final bool isAdapted;
   final bool adaptedUp;
 
   const _DifficultyBadge({
     required this.difficulty,
+    this.elo,
     this.isAdapted = false,
     this.adaptedUp = false,
   });
@@ -622,6 +624,7 @@ class _DifficultyBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = labels[difficulty] ?? 'Level $difficulty';
+    final text = isAdapted ? '$label ${adaptedUp ? '▲' : '▼'}' : label;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -630,7 +633,7 @@ class _DifficultyBadge extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF4B942).withValues(alpha: 0.3)),
       ),
       child: Text(
-        isAdapted ? '$label ${adaptedUp ? '▲' : '▼'}' : label,
+        elo != null ? '$text · $elo Elo' : text,
         style: const TextStyle(
           color: Color(0xFFF4B942),
           fontSize: 11,
@@ -647,6 +650,7 @@ class _DifficultyBadge extends StatelessWidget {
 
 class _BotPlayerBar extends StatefulWidget {
   final int difficulty;
+  final int? elo;
   final bool isAdapted;
   final BotPersonality personality;
   final bool isThinking;
@@ -654,6 +658,7 @@ class _BotPlayerBar extends StatefulWidget {
 
   const _BotPlayerBar({
     required this.difficulty,
+    this.elo,
     this.isAdapted = false,
     this.personality = BotPersonality.balanced,
     required this.isThinking,
@@ -749,7 +754,7 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                         ),
                       ),
                       child: Text(
-                        label,
+                        widget.elo != null ? '$label · ${widget.elo} Elo' : label,
                         style: const TextStyle(
                           color: Color(0xFF64B5F6),
                           fontSize: 10,

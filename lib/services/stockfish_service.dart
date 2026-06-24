@@ -6,11 +6,13 @@ class _LevelConfig {
   final int depth;
   final int multiPv;
   final double blunderChance;
+  final int elo;
 
   const _LevelConfig({
     required this.depth,
     required this.multiPv,
     required this.blunderChance,
+    required this.elo,
   });
 }
 
@@ -34,13 +36,19 @@ class StockfishService {
   // depth (so weak levels literally can't see far enough to spot tactics)
   // and by injecting a chance to play a worse candidate move instead of the
   // engine's actual best move, drawn from a MultiPV list of alternatives.
+  // Elo targets and blunder rates are spread out to mirror chess.com's own
+  // bot roster (roughly 250-3200), and blunder chances are kept low so every
+  // level still genuinely tries to win within its strength rather than
+  // throwing the game away.
   static const Map<int, _LevelConfig> _levelConfig = {
-    1: _LevelConfig(depth: 3, multiPv: 6, blunderChance: 0.35),
-    2: _LevelConfig(depth: 5, multiPv: 6, blunderChance: 0.22),
-    3: _LevelConfig(depth: 8, multiPv: 5, blunderChance: 0.12),
-    4: _LevelConfig(depth: 12, multiPv: 4, blunderChance: 0.05),
-    5: _LevelConfig(depth: 18, multiPv: 3, blunderChance: 0.01),
+    1: _LevelConfig(depth: 2, multiPv: 8, blunderChance: 0.18, elo: 350),
+    2: _LevelConfig(depth: 4, multiPv: 6, blunderChance: 0.10, elo: 800),
+    3: _LevelConfig(depth: 7, multiPv: 5, blunderChance: 0.05, elo: 1350),
+    4: _LevelConfig(depth: 11, multiPv: 4, blunderChance: 0.02, elo: 1900),
+    5: _LevelConfig(depth: 18, multiPv: 2, blunderChance: 0.005, elo: 2600),
   };
+
+  int eloFor(int difficulty) => (_levelConfig[difficulty] ?? _levelConfig[3]!).elo;
 
   static const Map<int, BotPersonality> _personalityByDifficulty = {
     1: BotPersonality.balanced,
