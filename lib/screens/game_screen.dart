@@ -48,6 +48,11 @@ class GameNotifier extends StateNotifier<GameState> {
   chess_lib.Chess _chess = chess_lib.Chess();
   bool _stockfishReady = false;
 
+  // Tracks recent player move quality so the bot's effective strength can
+  // drift up or down within the chosen difficulty, the way chess.com bots
+  // ease off after you blunder and tighten up after you play sharply.
+  double _performance = 0;
+
   GameNotifier({
     required StockfishService stockfish,
     required LocalCoachingService localCoaching,
@@ -63,10 +68,12 @@ class GameNotifier extends StateNotifier<GameState> {
   }) async {
     _chess = chess_lib.Chess();
     _openingDetector.reset();
+    _performance = 0;
     state = GameState(
       fen: _chess.fen,
       playerColor: playerColor,
       difficulty: difficulty,
+      effectiveDifficulty: difficulty,
       status: GameStatus.playing,
     );
 
@@ -128,6 +135,8 @@ class GameNotifier extends StateNotifier<GameState> {
       }
     }
 
+    final matBefore = _materialBalance();
+
     final success = _chess.move({
       'from': from,
       'to': to,
@@ -139,6 +148,9 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
+    final matAfter = _materialBalance();
+    final effectiveDifficulty = _updateEffectiveDifficulty(matBefore, matAfter);
+
     final history = _chess.history as List;
     final san = history.isNotEmpty ? history.last.toString() : '$from$to';
     final newMoves = <String>[...state.sanMoves, san];
@@ -148,6 +160,7 @@ class GameNotifier extends StateNotifier<GameState> {
       fen: _chess.fen,
       sanMoves: newMoves,
       currentOpening: opening,
+      effectiveDifficulty: effectiveDifficulty,
       clearSelectedSquare: true,
       validMoveSquares: [],
       lastMoveFrom: from,
@@ -186,8 +199,8 @@ class GameNotifier extends StateNotifier<GameState> {
       if (_stockfishReady) {
         uciMove = await _stockfish.getBestMove(
           fen: _chess.fen,
-          difficulty: state.difficulty,
-          thinkTimeMs: 1500 + state.difficulty * 300,
+          difficulty: state.effectiveDifficulty,
+          thinkTimeMs: 1500 + state.effectiveDifficulty * 300,
         );
       }
     } catch (_) {
@@ -292,6 +305,57 @@ class GameNotifier extends StateNotifier<GameState> {
 
   bool _isAiTurn() => !_isPlayerTurn() && state.status == GameStatus.playing;
 
+  static const _pieceValues = {
+    chess_lib.PieceType.PAWN: 100,
+    chess_lib.PieceType.KNIGHT: 300,
+    chess_lib.PieceType.BISHOP: 325,
+    chess_lib.PieceType.ROOK: 500,
+    chess_lib.PieceType.QUEEN: 900,
+  };
+
+  static const _files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  static const _ranks = ['1', '2', '3', '4', '5', '6', '7', '8'];
+
+  /// White-minus-black material balance in centipawns.
+  int _materialBalance() {
+    var balance = 0;
+    for (final f in _files) {
+      for (final r in _ranks) {
+        final piece = _chess.get('$f$r');
+        if (piece == null || piece.type == chess_lib.PieceType.KING) continue;
+        final value = _pieceValues[piece.type] ?? 0;
+        balance += piece.color == chess_lib.Color.WHITE ? value : -value;
+      }
+    }
+    return balance;
+  }
+
+  /// Nudges the bot's effective strength based on how the player's last
+  /// move went, then returns the new effective difficulty (1-5).
+  int _updateEffectiveDifficulty(int matBefore, int matAfter) {
+    final playerSign = state.playerColor == PlayerColor.white ? 1 : -1;
+    final swing = (matAfter - matBefore) * playerSign;
+
+    if (swing <= -150) {
+      _performance -= 2;
+    } else if (swing <= -50) {
+      _performance -= 1;
+    } else if (swing >= 150) {
+      _performance += 2;
+    } else {
+      _performance += 0.3;
+    }
+    _performance = _performance.clamp(-6, 6);
+
+    var adjustment = 0;
+    if (_performance <= -3) {
+      adjustment = -1;
+    } else if (_performance >= 3) {
+      adjustment = 1;
+    }
+    return (state.difficulty + adjustment).clamp(1, 5);
+  }
+
   String get pgn => state.sanMoves.asMap().entries.map((e) {
         final idx = e.key;
         final move = e.value;
@@ -349,7 +413,11 @@ class GameScreen extends ConsumerWidget {
             const SizedBox(width: 8),
             const Text('Chess Coach', style: TextStyle(fontSize: 16)),
             const Spacer(),
-            _DifficultyBadge(difficulty: gs.difficulty),
+            _DifficultyBadge(
+              difficulty: gs.effectiveDifficulty,
+              isAdapted: gs.effectiveDifficulty != gs.difficulty,
+              adaptedUp: gs.effectiveDifficulty > gs.difficulty,
+            ),
           ],
         ),
         actions: [
@@ -365,7 +433,8 @@ class GameScreen extends ConsumerWidget {
           children: [
             // Bot player bar (top — opponent)
             _BotPlayerBar(
-              difficulty: gs.difficulty,
+              difficulty: gs.effectiveDifficulty,
+              isAdapted: gs.effectiveDifficulty != gs.difficulty,
               isThinking: gs.isAiThinking,
               lastAiMove: gs.isAiThinking
                   ? null
@@ -497,13 +566,20 @@ class _StatusBar extends StatelessWidget {
 
 class _DifficultyBadge extends StatelessWidget {
   final int difficulty;
+  final bool isAdapted;
+  final bool adaptedUp;
 
-  const _DifficultyBadge({required this.difficulty});
+  const _DifficultyBadge({
+    required this.difficulty,
+    this.isAdapted = false,
+    this.adaptedUp = false,
+  });
 
   static const labels = {1: 'Novice', 2: 'Beginner', 3: 'Casual', 4: 'Club', 5: 'Master'};
 
   @override
   Widget build(BuildContext context) {
+    final label = labels[difficulty] ?? 'Level $difficulty';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -512,7 +588,7 @@ class _DifficultyBadge extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF4B942).withValues(alpha: 0.3)),
       ),
       child: Text(
-        labels[difficulty] ?? 'Level $difficulty',
+        isAdapted ? '$label ${adaptedUp ? '▲' : '▼'}' : label,
         style: const TextStyle(
           color: Color(0xFFF4B942),
           fontSize: 11,
@@ -529,11 +605,13 @@ class _DifficultyBadge extends StatelessWidget {
 
 class _BotPlayerBar extends StatefulWidget {
   final int difficulty;
+  final bool isAdapted;
   final bool isThinking;
   final String? lastAiMove;
 
   const _BotPlayerBar({
     required this.difficulty,
+    this.isAdapted = false,
     required this.isThinking,
     this.lastAiMove,
   });
@@ -628,6 +706,17 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                         ),
                       ),
                     ),
+                    if (widget.isAdapted) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        'adapting',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 2),

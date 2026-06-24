@@ -61,6 +61,7 @@ class GameState {
   final GameStatus status;
   final PlayerColor playerColor;
   final int difficulty;
+  final int effectiveDifficulty;
   final Opening? currentOpening;
   final String? lastCoachingTip;
   final String? aiMoveExplanation;
@@ -78,6 +79,7 @@ class GameState {
     this.status = GameStatus.idle,
     this.playerColor = PlayerColor.white,
     this.difficulty = 3,
+    int? effectiveDifficulty,
     this.currentOpening,
     this.lastCoachingTip,
     this.aiMoveExplanation,
@@ -88,7 +90,7 @@ class GameState {
     this.validMoveSquares = const [],
     this.lastMoveFrom,
     this.lastMoveTo,
-  });
+  }) : effectiveDifficulty = effectiveDifficulty ?? difficulty;
 
   static const initial = GameState(
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -100,6 +102,7 @@ class GameState {
     GameStatus? status,
     PlayerColor? playerColor,
     int? difficulty,
+    int? effectiveDifficulty,
     Opening? currentOpening,
     bool clearOpening = false,
     String? lastCoachingTip,
@@ -123,6 +126,7 @@ class GameState {
         status: status ?? this.status,
         playerColor: playerColor ?? this.playerColor,
         difficulty: difficulty ?? this.difficulty,
+        effectiveDifficulty: effectiveDifficulty ?? this.effectiveDifficulty,
         currentOpening: clearOpening ? null : (currentOpening ?? this.currentOpening),
         lastCoachingTip: clearCoachingTip ? null : (lastCoachingTip ?? this.lastCoachingTip),
         aiMoveExplanation: clearAiExplanation ? null : (aiMoveExplanation ?? this.aiMoveExplanation),
