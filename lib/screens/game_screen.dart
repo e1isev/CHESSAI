@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chess/chess.dart' as chess_lib;
 
+import '../data/bot_opening_books.dart';
 import '../models/game_state.dart';
 import '../services/stockfish_service.dart';
 import '../services/local_coaching_service.dart';
@@ -48,6 +51,15 @@ class GameNotifier extends StateNotifier<GameState> {
   chess_lib.Chess _chess = chess_lib.Chess();
   bool _stockfishReady = false;
 
+  // Tracks recent player move quality so the bot's effective strength can
+  // drift up or down within the chosen difficulty, the way chess.com bots
+  // ease off after you blunder and tighten up after you play sharply.
+  double _performance = 0;
+
+  // Full game move history in UCI form, used to match the bot's opening
+  // book against the line actually being played.
+  final List<String> _uciHistory = [];
+
   GameNotifier({
     required StockfishService stockfish,
     required LocalCoachingService localCoaching,
@@ -63,10 +75,13 @@ class GameNotifier extends StateNotifier<GameState> {
   }) async {
     _chess = chess_lib.Chess();
     _openingDetector.reset();
+    _performance = 0;
+    _uciHistory.clear();
     state = GameState(
       fen: _chess.fen,
       playerColor: playerColor,
       difficulty: difficulty,
+      effectiveDifficulty: difficulty,
       status: GameStatus.playing,
     );
 
@@ -128,6 +143,8 @@ class GameNotifier extends StateNotifier<GameState> {
       }
     }
 
+    final matBefore = _materialBalance();
+
     final success = _chess.move({
       'from': from,
       'to': to,
@@ -139,6 +156,10 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
+    _uciHistory.add('$from$to${promotion ?? ''}');
+    final matAfter = _materialBalance();
+    final effectiveDifficulty = _updateEffectiveDifficulty(matBefore, matAfter);
+
     final history = _chess.history as List;
     final san = history.isNotEmpty ? history.last.toString() : '$from$to';
     final newMoves = <String>[...state.sanMoves, san];
@@ -148,6 +169,7 @@ class GameNotifier extends StateNotifier<GameState> {
       fen: _chess.fen,
       sanMoves: newMoves,
       currentOpening: opening,
+      effectiveDifficulty: effectiveDifficulty,
       clearSelectedSquare: true,
       validMoveSquares: [],
       lastMoveFrom: from,
@@ -180,18 +202,20 @@ class GameNotifier extends StateNotifier<GameState> {
 
     state = state.copyWith(isAiThinking: true, clearAiExplanation: true);
 
-    String? uciMove;
+    String? uciMove = _pickBookMove();
     final thinkStart = DateTime.now();
-    try {
-      if (_stockfishReady) {
-        uciMove = await _stockfish.getBestMove(
-          fen: _chess.fen,
-          difficulty: state.difficulty,
-          thinkTimeMs: 1500 + state.difficulty * 300,
-        );
+    if (uciMove == null) {
+      try {
+        if (_stockfishReady) {
+          uciMove = await _stockfish.getBestMove(
+            fen: _chess.fen,
+            difficulty: state.effectiveDifficulty,
+            thinkTimeMs: 1500 + state.effectiveDifficulty * 300,
+          );
+        }
+      } catch (_) {
+        uciMove = null;
       }
-    } catch (_) {
-      uciMove = null;
     }
     // Ensure the bot "thinking" indicator shows for at least 600ms
     final elapsed = DateTime.now().difference(thinkStart).inMilliseconds;
@@ -217,6 +241,7 @@ class GameNotifier extends StateNotifier<GameState> {
       'to': to,
       if (promo != null) 'promotion': promo,
     });
+    _uciHistory.add(uciMove);
 
     final history = _chess.history as List;
     final san = history.isNotEmpty ? history.last.toString() : uciMove;
@@ -292,6 +317,84 @@ class GameNotifier extends StateNotifier<GameState> {
 
   bool _isAiTurn() => !_isPlayerTurn() && state.status == GameStatus.playing;
 
+  // Plays straight from the bot's opening book while the actual game
+  // matches a known line for its personality; returns null (falling back to
+  // the engine) the moment the position diverges or no book move applies.
+  String? _pickBookMove() {
+    final personality = _stockfish.personalityFor(state.difficulty);
+    final lines = kBotOpeningBooks[personality] ?? const [];
+    final idx = _uciHistory.length;
+
+    final candidates = <String>[];
+    for (final line in lines) {
+      if (line.length <= idx) continue;
+      var matches = true;
+      for (var i = 0; i < idx; i++) {
+        if (line[i] != _uciHistory[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) candidates.add(line[idx]);
+    }
+    if (candidates.isEmpty) return null;
+
+    final move = candidates[Random().nextInt(candidates.length)];
+    final legal = _chess
+        .generate_moves()
+        .any((m) => '${m.fromAlgebraic}${m.toAlgebraic}' == move.substring(0, 4));
+    return legal ? move : null;
+  }
+
+  static const _pieceValues = {
+    chess_lib.PieceType.PAWN: 100,
+    chess_lib.PieceType.KNIGHT: 300,
+    chess_lib.PieceType.BISHOP: 325,
+    chess_lib.PieceType.ROOK: 500,
+    chess_lib.PieceType.QUEEN: 900,
+  };
+
+  static const _files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  static const _ranks = ['1', '2', '3', '4', '5', '6', '7', '8'];
+
+  /// White-minus-black material balance in centipawns.
+  int _materialBalance() {
+    var balance = 0;
+    for (final f in _files) {
+      for (final r in _ranks) {
+        final piece = _chess.get('$f$r');
+        if (piece == null || piece.type == chess_lib.PieceType.KING) continue;
+        final value = _pieceValues[piece.type] ?? 0;
+        balance += piece.color == chess_lib.Color.WHITE ? value : -value;
+      }
+    }
+    return balance;
+  }
+
+  /// Nudges the bot's effective strength based on how the player's last
+  /// move went, then returns the new effective difficulty (1-5).
+  int _updateEffectiveDifficulty(int matBefore, int matAfter) {
+    final playerSign = state.playerColor == PlayerColor.white ? 1 : -1;
+    final swing = (matAfter - matBefore) * playerSign;
+
+    if (swing <= -150) {
+      _performance -= 2;
+    } else if (swing <= -50) {
+      _performance -= 1;
+    } else if (swing >= 150) {
+      _performance += 2;
+    } else {
+      _performance += 0.3;
+    }
+    _performance = _performance.clamp(-6, 6);
+
+    // The bot only ever ramps up to punish a struggling player harder —
+    // mirroring chess.com bots, it never deliberately softens to let
+    // someone win.
+    final adjustment = _performance >= 3 ? 1 : 0;
+    return (state.difficulty + adjustment).clamp(1, 5);
+  }
+
   String get pgn => state.sanMoves.asMap().entries.map((e) {
         final idx = e.key;
         final move = e.value;
@@ -349,7 +452,12 @@ class GameScreen extends ConsumerWidget {
             const SizedBox(width: 8),
             const Text('Chess Coach', style: TextStyle(fontSize: 16)),
             const Spacer(),
-            _DifficultyBadge(difficulty: gs.difficulty),
+            _DifficultyBadge(
+              difficulty: gs.effectiveDifficulty,
+              elo: ref.watch(stockfishServiceProvider).eloFor(gs.effectiveDifficulty),
+              isAdapted: gs.effectiveDifficulty != gs.difficulty,
+              adaptedUp: gs.effectiveDifficulty > gs.difficulty,
+            ),
           ],
         ),
         actions: [
@@ -365,7 +473,10 @@ class GameScreen extends ConsumerWidget {
           children: [
             // Bot player bar (top — opponent)
             _BotPlayerBar(
-              difficulty: gs.difficulty,
+              difficulty: gs.effectiveDifficulty,
+              elo: ref.watch(stockfishServiceProvider).eloFor(gs.effectiveDifficulty),
+              isAdapted: gs.effectiveDifficulty != gs.difficulty,
+              personality: ref.watch(stockfishServiceProvider).personalityFor(gs.difficulty),
               isThinking: gs.isAiThinking,
               lastAiMove: gs.isAiThinking
                   ? null
@@ -497,13 +608,23 @@ class _StatusBar extends StatelessWidget {
 
 class _DifficultyBadge extends StatelessWidget {
   final int difficulty;
+  final int? elo;
+  final bool isAdapted;
+  final bool adaptedUp;
 
-  const _DifficultyBadge({required this.difficulty});
+  const _DifficultyBadge({
+    required this.difficulty,
+    this.elo,
+    this.isAdapted = false,
+    this.adaptedUp = false,
+  });
 
   static const labels = {1: 'Novice', 2: 'Beginner', 3: 'Casual', 4: 'Club', 5: 'Master'};
 
   @override
   Widget build(BuildContext context) {
+    final label = labels[difficulty] ?? 'Level $difficulty';
+    final text = isAdapted ? '$label ${adaptedUp ? '▲' : '▼'}' : label;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -512,7 +633,7 @@ class _DifficultyBadge extends StatelessWidget {
         border: Border.all(color: const Color(0xFFF4B942).withValues(alpha: 0.3)),
       ),
       child: Text(
-        labels[difficulty] ?? 'Level $difficulty',
+        elo != null ? '$text · $elo Elo' : text,
         style: const TextStyle(
           color: Color(0xFFF4B942),
           fontSize: 11,
@@ -529,11 +650,17 @@ class _DifficultyBadge extends StatelessWidget {
 
 class _BotPlayerBar extends StatefulWidget {
   final int difficulty;
+  final int? elo;
+  final bool isAdapted;
+  final BotPersonality personality;
   final bool isThinking;
   final String? lastAiMove;
 
   const _BotPlayerBar({
     required this.difficulty,
+    this.elo,
+    this.isAdapted = false,
+    this.personality = BotPersonality.balanced,
     required this.isThinking,
     this.lastAiMove,
   });
@@ -552,6 +679,13 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
     3: 'Casual',
     4: 'Club',
     5: 'Master',
+  };
+
+  static const _personalityLabels = {
+    BotPersonality.balanced: 'Balanced',
+    BotPersonality.aggressive: 'Aggressive',
+    BotPersonality.positional: 'Positional',
+    BotPersonality.defensive: 'Defensive',
   };
 
   @override
@@ -620,7 +754,7 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                         ),
                       ),
                       child: Text(
-                        label,
+                        widget.elo != null ? '$label · ${widget.elo} Elo' : label,
                         style: const TextStyle(
                           color: Color(0xFF64B5F6),
                           fontSize: 10,
@@ -628,6 +762,27 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                         ),
                       ),
                     ),
+                    if (widget.personality != BotPersonality.balanced) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        _personalityLabels[widget.personality]!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 9,
+                        ),
+                      ),
+                    ],
+                    if (widget.isAdapted) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        'adapting',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 9,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 2),
