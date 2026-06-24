@@ -11,9 +11,37 @@ $wrapperDir = Join-Path $repoRoot 'android\gradle\wrapper'
 $wrapperJar = Join-Path $wrapperDir 'gradle-wrapper.jar'
 $wrapperProperties = Join-Path $wrapperDir 'gradle-wrapper.properties'
 
-if (Test-Path $wrapperJar) {
-    Write-Host 'Gradle wrapper JAR already exists.'
+function Test-ValidWrapperJar([string]$path) {
+    if (-not (Test-Path $path)) { return $false }
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($path)
+        try {
+            $manifestEntry = $zip.Entries | Where-Object { $_.FullName -eq 'META-INF/MANIFEST.MF' } | Select-Object -First 1
+            if (-not $manifestEntry) { return $false }
+            $reader = New-Object System.IO.StreamReader($manifestEntry.Open())
+            try {
+                $manifestText = $reader.ReadToEnd()
+            } finally {
+                $reader.Dispose()
+            }
+            return $manifestText -match 'Main-Class:\s*org\.gradle\.wrapper\.GradleWrapperMain'
+        } finally {
+            $zip.Dispose()
+        }
+    } catch {
+        return $false
+    }
+}
+
+if (Test-ValidWrapperJar $wrapperJar) {
+    Write-Host 'Gradle wrapper JAR already exists and is valid.'
     exit 0
+}
+
+if (Test-Path $wrapperJar) {
+    Write-Host 'Existing Gradle wrapper JAR is invalid or corrupt; recreating it.'
+    Remove-Item -LiteralPath $wrapperJar -Force
 }
 
 if (-not (Test-Path $wrapperProperties)) {
