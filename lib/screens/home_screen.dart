@@ -23,7 +23,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0D1B2A),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             children: [
@@ -69,7 +69,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 eloFor: ref.watch(stockfishServiceProvider).eloFor,
               ),
 
-              const Spacer(),
+              const SizedBox(height: 32),
 
               // Play button
               SizedBox(
@@ -132,12 +132,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ],
               ),
 
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               Text(
                 'Last updated $kAppLastUpdated',
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.3), fontSize: 11),
               ),
-              const SizedBox(height: 8),
             ],
           ),
         ),
