@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chess/chess.dart' as chess_lib;
 
 import '../data/bot_opening_books.dart';
+import '../data/bot_quips.dart';
 import '../models/game_state.dart';
 import '../services/stockfish_service.dart';
 import '../services/local_coaching_service.dart';
 import '../services/opening_detector.dart';
+import '../services/tactics_detector.dart';
 import '../widgets/chess_board.dart';
 import '../widgets/coaching_panel.dart';
 import '../widgets/opening_banner.dart';
@@ -232,16 +234,33 @@ class GameNotifier extends StateNotifier<GameState> {
       uciMove = '${m.fromAlgebraic}${m.toAlgebraic}';
     }
 
+    // Never pass up genuinely free material — chess.com bots always snap up
+    // hanging pieces rather than playing something quieter.
+    final aiColor =
+        state.playerColor == PlayerColor.white ? chess_lib.Color.BLACK : chess_lib.Color.WHITE;
+    final freeCapture = TacticsDetector.bestCapture(_chess, aiColor);
+    final forced = freeCapture == null ? null : _forcedCaptureMove(freeCapture.square);
+    if (forced != null) uciMove = forced;
+
     final from = uciMove.substring(0, 2);
     final to = uciMove.substring(2, 4);
     final promo = uciMove.length == 5 ? uciMove[4] : null;
 
+    final isCapture = _chess.get(to) != null;
     _chess.move({
       'from': from,
       'to': to,
       if (promo != null) 'promotion': promo,
     });
     _uciHistory.add(uciMove);
+
+    final personality = _stockfish.personalityFor(state.difficulty);
+    final quip = _pickQuip(
+      personality,
+      isCheck: _chess.in_check,
+      isFreeCapture: forced != null,
+      isCapture: isCapture,
+    );
 
     final history = _chess.history as List;
     final san = history.isNotEmpty ? history.last.toString() : uciMove;
@@ -255,6 +274,8 @@ class GameNotifier extends StateNotifier<GameState> {
       isAiThinking: false,
       lastMoveFrom: from,
       lastMoveTo: to,
+      lastBotQuip: quip,
+      clearBotQuip: quip == null,
     );
 
     if (_chess.in_checkmate) {
@@ -344,6 +365,35 @@ class GameNotifier extends StateNotifier<GameState> {
         .generate_moves()
         .any((m) => '${m.fromAlgebraic}${m.toAlgebraic}' == move.substring(0, 4));
     return legal ? move : null;
+  }
+
+  /// Finds a legal move that captures on [square], defaulting any pawn
+  /// promotion to a queen. Returns null if no legal move lands there.
+  String? _forcedCaptureMove(String square) {
+    for (final m in _chess.generate_moves()) {
+      if (m.toAlgebraic != square) continue;
+      final isPromotion = _chess.get(m.fromAlgebraic)?.type == chess_lib.PieceType.PAWN &&
+          (square[1] == '8' || square[1] == '1');
+      return '${m.fromAlgebraic}${m.toAlgebraic}${isPromotion ? 'q' : ''}';
+    }
+    return null;
+  }
+
+  /// Picks a short personality-flavored line for the bot to "say" after a
+  /// notable move, or null for ordinary quiet moves.
+  String? _pickQuip(
+    BotPersonality personality, {
+    required bool isCheck,
+    required bool isFreeCapture,
+    required bool isCapture,
+  }) {
+    final moment = isFreeCapture
+        ? BotMoment.freeCapture
+        : (isCheck ? BotMoment.check : (isCapture ? BotMoment.capture : null));
+    if (moment == null) return null;
+    final lines = kBotQuips[personality]?[moment];
+    if (lines == null || lines.isEmpty) return null;
+    return lines[Random().nextInt(lines.length)];
   }
 
   static final _pieceValues = {
@@ -484,6 +534,7 @@ class GameScreen extends ConsumerWidget {
                           _lastMoveWasAi(gs)
                       ? gs.sanMoves.last
                       : null),
+              quip: gs.isAiThinking ? null : gs.lastBotQuip,
             ),
 
             // Opening banner
@@ -655,6 +706,7 @@ class _BotPlayerBar extends StatefulWidget {
   final BotPersonality personality;
   final bool isThinking;
   final String? lastAiMove;
+  final String? quip;
 
   const _BotPlayerBar({
     required this.difficulty,
@@ -663,6 +715,7 @@ class _BotPlayerBar extends StatefulWidget {
     this.personality = BotPersonality.balanced,
     required this.isThinking,
     this.lastAiMove,
+    this.quip,
   });
 
   @override
@@ -818,6 +871,17 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                     'Waiting...',
                     style: TextStyle(color: Colors.white38, fontSize: 11),
                   ),
+                if (widget.quip != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '"${widget.quip}"',
+                    style: const TextStyle(
+                      color: Color(0xFFF4B942),
+                      fontSize: 11,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

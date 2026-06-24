@@ -72,6 +72,7 @@ class GameState {
   final List<String> validMoveSquares;
   final String? lastMoveFrom;
   final String? lastMoveTo;
+  final String? lastBotQuip;
 
   const GameState({
     required this.fen,
@@ -90,6 +91,7 @@ class GameState {
     this.validMoveSquares = const [],
     this.lastMoveFrom,
     this.lastMoveTo,
+    this.lastBotQuip,
   }) : effectiveDifficulty = effectiveDifficulty ?? difficulty;
 
   static const initial = GameState(
@@ -119,6 +121,8 @@ class GameState {
     String? lastMoveFrom,
     bool clearLastMove = false,
     String? lastMoveTo,
+    String? lastBotQuip,
+    bool clearBotQuip = false,
   }) =>
       GameState(
         fen: fen ?? this.fen,
@@ -137,5 +141,6 @@ class GameState {
         validMoveSquares: validMoveSquares ?? this.validMoveSquares,
         lastMoveFrom: clearLastMove ? null : (lastMoveFrom ?? this.lastMoveFrom),
         lastMoveTo: clearLastMove ? null : (lastMoveTo ?? this.lastMoveTo),
+        lastBotQuip: clearBotQuip ? null : (lastBotQuip ?? this.lastBotQuip),
       );
 }
