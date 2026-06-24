@@ -380,7 +380,7 @@ class LocalCoachingService {
   // ── Board helpers ─────────────────────────────────────────────────────────
 
   int _materialBalance(chess_lib.Chess chess) {
-    const values = {
+    final values = {
       chess_lib.PieceType.PAWN: 100,
       chess_lib.PieceType.KNIGHT: 300,
       chess_lib.PieceType.BISHOP: 325,

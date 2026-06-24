@@ -346,7 +346,7 @@ class GameNotifier extends StateNotifier<GameState> {
     return legal ? move : null;
   }
 
-  static const _pieceValues = {
+  static final _pieceValues = {
     chess_lib.PieceType.PAWN: 100,
     chess_lib.PieceType.KNIGHT: 300,
     chess_lib.PieceType.BISHOP: 325,

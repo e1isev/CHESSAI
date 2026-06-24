@@ -6,7 +6,7 @@ class TacticsDetector {
   static const _files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   static const _ranks = ['1', '2', '3', '4', '5', '6', '7', '8'];
 
-  static const _values = {
+  static final _values = {
     chess_lib.PieceType.PAWN: 100,
     chess_lib.PieceType.KNIGHT: 300,
     chess_lib.PieceType.BISHOP: 325,
@@ -599,16 +599,17 @@ class TacticsDetector {
   static chess_lib.Color _opp(chess_lib.Color c) =>
       c == chess_lib.Color.WHITE ? chess_lib.Color.BLACK : chess_lib.Color.WHITE;
 
+  static final _pieceNames = {
+    chess_lib.PieceType.PAWN: 'pawn',
+    chess_lib.PieceType.KNIGHT: 'knight',
+    chess_lib.PieceType.BISHOP: 'bishop',
+    chess_lib.PieceType.ROOK: 'rook',
+    chess_lib.PieceType.QUEEN: 'queen',
+    chess_lib.PieceType.KING: 'king',
+  };
+
   static String pieceName(chess_lib.PieceType type) {
-    const n = {
-      chess_lib.PieceType.PAWN: 'pawn',
-      chess_lib.PieceType.KNIGHT: 'knight',
-      chess_lib.PieceType.BISHOP: 'bishop',
-      chess_lib.PieceType.ROOK: 'rook',
-      chess_lib.PieceType.QUEEN: 'queen',
-      chess_lib.PieceType.KING: 'king',
-    };
-    return n[type] ?? 'piece';
+    return _pieceNames[type] ?? 'piece';
   }
 }
 
