@@ -1,7 +1,10 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:chess/chess.dart' as chess_lib;
 
+import '../data/bot_opening_books.dart';
 import '../models/game_state.dart';
 import '../services/stockfish_service.dart';
 import '../services/local_coaching_service.dart';
@@ -53,6 +56,10 @@ class GameNotifier extends StateNotifier<GameState> {
   // ease off after you blunder and tighten up after you play sharply.
   double _performance = 0;
 
+  // Full game move history in UCI form, used to match the bot's opening
+  // book against the line actually being played.
+  final List<String> _uciHistory = [];
+
   GameNotifier({
     required StockfishService stockfish,
     required LocalCoachingService localCoaching,
@@ -69,6 +76,7 @@ class GameNotifier extends StateNotifier<GameState> {
     _chess = chess_lib.Chess();
     _openingDetector.reset();
     _performance = 0;
+    _uciHistory.clear();
     state = GameState(
       fen: _chess.fen,
       playerColor: playerColor,
@@ -148,6 +156,7 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
+    _uciHistory.add('$from$to${promotion ?? ''}');
     final matAfter = _materialBalance();
     final effectiveDifficulty = _updateEffectiveDifficulty(matBefore, matAfter);
 
@@ -193,18 +202,20 @@ class GameNotifier extends StateNotifier<GameState> {
 
     state = state.copyWith(isAiThinking: true, clearAiExplanation: true);
 
-    String? uciMove;
+    String? uciMove = _pickBookMove();
     final thinkStart = DateTime.now();
-    try {
-      if (_stockfishReady) {
-        uciMove = await _stockfish.getBestMove(
-          fen: _chess.fen,
-          difficulty: state.effectiveDifficulty,
-          thinkTimeMs: 1500 + state.effectiveDifficulty * 300,
-        );
+    if (uciMove == null) {
+      try {
+        if (_stockfishReady) {
+          uciMove = await _stockfish.getBestMove(
+            fen: _chess.fen,
+            difficulty: state.effectiveDifficulty,
+            thinkTimeMs: 1500 + state.effectiveDifficulty * 300,
+          );
+        }
+      } catch (_) {
+        uciMove = null;
       }
-    } catch (_) {
-      uciMove = null;
     }
     // Ensure the bot "thinking" indicator shows for at least 600ms
     final elapsed = DateTime.now().difference(thinkStart).inMilliseconds;
@@ -230,6 +241,7 @@ class GameNotifier extends StateNotifier<GameState> {
       'to': to,
       if (promo != null) 'promotion': promo,
     });
+    _uciHistory.add(uciMove);
 
     final history = _chess.history as List;
     final san = history.isNotEmpty ? history.last.toString() : uciMove;
@@ -304,6 +316,35 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   bool _isAiTurn() => !_isPlayerTurn() && state.status == GameStatus.playing;
+
+  // Plays straight from the bot's opening book while the actual game
+  // matches a known line for its personality; returns null (falling back to
+  // the engine) the moment the position diverges or no book move applies.
+  String? _pickBookMove() {
+    final personality = _stockfish.personalityFor(state.difficulty);
+    final lines = kBotOpeningBooks[personality] ?? const [];
+    final idx = _uciHistory.length;
+
+    final candidates = <String>[];
+    for (final line in lines) {
+      if (line.length <= idx) continue;
+      var matches = true;
+      for (var i = 0; i < idx; i++) {
+        if (line[i] != _uciHistory[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) candidates.add(line[idx]);
+    }
+    if (candidates.isEmpty) return null;
+
+    final move = candidates[Random().nextInt(candidates.length)];
+    final legal = _chess
+        .generate_moves()
+        .any((m) => '${m.fromAlgebraic}${m.toAlgebraic}' == move.substring(0, 4));
+    return legal ? move : null;
+  }
 
   static const _pieceValues = {
     chess_lib.PieceType.PAWN: 100,
@@ -435,6 +476,7 @@ class GameScreen extends ConsumerWidget {
             _BotPlayerBar(
               difficulty: gs.effectiveDifficulty,
               isAdapted: gs.effectiveDifficulty != gs.difficulty,
+              personality: ref.watch(stockfishServiceProvider).personalityFor(gs.difficulty),
               isThinking: gs.isAiThinking,
               lastAiMove: gs.isAiThinking
                   ? null
@@ -606,12 +648,14 @@ class _DifficultyBadge extends StatelessWidget {
 class _BotPlayerBar extends StatefulWidget {
   final int difficulty;
   final bool isAdapted;
+  final BotPersonality personality;
   final bool isThinking;
   final String? lastAiMove;
 
   const _BotPlayerBar({
     required this.difficulty,
     this.isAdapted = false,
+    this.personality = BotPersonality.balanced,
     required this.isThinking,
     this.lastAiMove,
   });
@@ -630,6 +674,13 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
     3: 'Casual',
     4: 'Club',
     5: 'Master',
+  };
+
+  static const _personalityLabels = {
+    BotPersonality.balanced: 'Balanced',
+    BotPersonality.aggressive: 'Aggressive',
+    BotPersonality.positional: 'Positional',
+    BotPersonality.defensive: 'Defensive',
   };
 
   @override
@@ -706,6 +757,16 @@ class _BotPlayerBarState extends State<_BotPlayerBar>
                         ),
                       ),
                     ),
+                    if (widget.personality != BotPersonality.balanced) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        _personalityLabels[widget.personality]!,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 9,
+                        ),
+                      ),
+                    ],
                     if (widget.isAdapted) ...[
                       const SizedBox(width: 6),
                       Text(

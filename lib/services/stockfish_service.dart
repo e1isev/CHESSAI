@@ -14,6 +14,10 @@ class _LevelConfig {
   });
 }
 
+// Each difficulty level also gets a fixed playing style, mimicking how
+// chess.com bots are given personalities on top of their raw strength.
+enum BotPersonality { balanced, aggressive, positional, defensive }
+
 class StockfishService {
   Stockfish? _stockfish;
   StreamSubscription<String>? _subscription;
@@ -24,6 +28,7 @@ class StockfishService {
   final Map<int, String> _multipvMoves = {};
   int _currentDifficulty = 3;
   _LevelConfig? _currentConfig;
+  String? _currentFen;
 
   // Difficulty is simulated the way chess.com bots do: by limiting search
   // depth (so weak levels literally can't see far enough to spot tactics)
@@ -36,6 +41,17 @@ class StockfishService {
     4: _LevelConfig(depth: 12, multiPv: 4, blunderChance: 0.05),
     5: _LevelConfig(depth: 18, multiPv: 3, blunderChance: 0.01),
   };
+
+  static const Map<int, BotPersonality> _personalityByDifficulty = {
+    1: BotPersonality.balanced,
+    2: BotPersonality.aggressive,
+    3: BotPersonality.positional,
+    4: BotPersonality.defensive,
+    5: BotPersonality.balanced,
+  };
+
+  BotPersonality personalityFor(int difficulty) =>
+      _personalityByDifficulty[difficulty] ?? BotPersonality.balanced;
 
   Future<void> init() async {
     _stockfish = Stockfish();
@@ -82,6 +98,7 @@ class StockfishService {
     final config = _levelConfig[difficulty] ?? _levelConfig[3]!;
     _currentDifficulty = difficulty;
     _currentConfig = config;
+    _currentFen = fen;
     _multipvMoves.clear();
     _bestMoveCompleter = Completer<String>();
 
@@ -100,6 +117,8 @@ class StockfishService {
   // engine's best line, but with a per-level chance of instead playing one
   // of the weaker MultiPV alternatives — mimicking a human-strength blunder
   // rather than the engine's intentionally hobbled "true" evaluation.
+  // Personality biases which alternative gets picked: aggressive bots favor
+  // captures (sound or not), defensive bots favor quiet moves.
   String _chooseMove(String? fallback) {
     final ranked = <String>[
       for (var i = 1; i <= _multipvMoves.length; i++)
@@ -108,15 +127,64 @@ class StockfishService {
     if (ranked.isEmpty) return fallback ?? '0000';
 
     final config = _currentConfig;
-    if (ranked.length == 1 || config == null || _random.nextDouble() >= config.blunderChance) {
-      return ranked.first;
+    final personality = personalityFor(_currentDifficulty);
+    final fen = _currentFen;
+    if (ranked.length == 1 || config == null) return ranked.first;
+
+    if (_random.nextDouble() < config.blunderChance) {
+      final worseMoves = ranked.sublist(1);
+      final pickLimit = _currentDifficulty <= 2
+          ? worseMoves.length
+          : (_currentDifficulty == 3 ? min(2, worseMoves.length) : 1);
+      final pool = worseMoves.take(pickLimit).toList();
+      final biased = _pickByPersonality(pool, personality, fen);
+      return biased ?? pool[_random.nextInt(pool.length)];
     }
 
-    final worseMoves = ranked.sublist(1);
-    final pickLimit = _currentDifficulty <= 2
-        ? worseMoves.length
-        : (_currentDifficulty == 3 ? min(2, worseMoves.length) : 1);
-    return worseMoves[_random.nextInt(pickLimit)];
+    // Aggressive bots sometimes reach for a sharp near-best capture instead
+    // of the technically-best quiet move.
+    if (personality == BotPersonality.aggressive && fen != null && _random.nextDouble() < 0.4) {
+      final nearBest = ranked.skip(1).take(2).where((m) => _isCapture(fen, m));
+      if (nearBest.isNotEmpty) return nearBest.first;
+    }
+
+    return ranked.first;
+  }
+
+  String? _pickByPersonality(List<String> pool, BotPersonality personality, String? fen) {
+    if (fen == null || pool.isEmpty) return null;
+    if (personality == BotPersonality.aggressive) {
+      final captures = pool.where((m) => _isCapture(fen, m)).toList();
+      if (captures.isNotEmpty) return captures[_random.nextInt(captures.length)];
+    } else if (personality == BotPersonality.defensive) {
+      final quiet = pool.where((m) => !_isCapture(fen, m)).toList();
+      if (quiet.isNotEmpty) return quiet[_random.nextInt(quiet.length)];
+    }
+    return null;
+  }
+
+  // True if the destination square of a UCI move is occupied in the given
+  // FEN, i.e. the move is a capture. Ignores en passant as a rare edge case.
+  bool _isCapture(String fen, String uciMove) {
+    if (uciMove.length < 4) return false;
+    final rows = fen.split(' ').first.split('/');
+    if (rows.length != 8) return false;
+    final toFile = uciMove.codeUnitAt(2) - 'a'.codeUnitAt(0);
+    final toRank = int.tryParse(uciMove[3]);
+    if (toRank == null || toFile < 0 || toFile > 7 || toRank < 1 || toRank > 8) return false;
+    final row = rows[8 - toRank];
+    var col = 0;
+    for (final ch in row.split('')) {
+      final digit = int.tryParse(ch);
+      if (digit != null) {
+        col += digit;
+        if (col > toFile) return false;
+      } else {
+        if (col == toFile) return true;
+        col += 1;
+      }
+    }
+    return false;
   }
 
   // Returns centipawn evaluation from Stockfish (positive = white advantage)
